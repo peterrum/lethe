@@ -14,6 +14,8 @@ before_install:
 
 script:
 - echo "Docker has been pulled"
+- ls
+- export DEAL_II_DIR=dealii
 - mkdir -p build
 - cd build
 - cmake ${CMAKE_OPTIONS} -DCMAKE_CXX_FLAGS=${CXX_FLAGS} -DCMAKE_BUILD_TYPE=Release ../ 
