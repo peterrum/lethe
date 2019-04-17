@@ -18,4 +18,6 @@ before_install:
 script:
 - export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:v9.0.0-gcc-mpi-fulldepsspack-debugrelease  /bin/sh -c"
 - echo "Docker instantiated"
+- pwd
 - ls
+- env | grep DEALII
