@@ -7,6 +7,9 @@ env:
 services:
   - docker
 
+compiler:
+-gcc
+
 notifications:
   email: false
 
@@ -18,5 +21,7 @@ before_install:
 script:
 - export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease  /bin/sh -c"
 - echo "Docker instantiated"
-- $DOCKER_RUN "test -d build-travis && rm -rf build-travis; mkdir build-travis; cd build-travis; cmake -GNinja ../; ninja"
+- $DOCKER_RUN "test -d build-travis && rm -rf build-travis;"
+- $DOCKER_RUN "mkdir build-travis; cd build-travis;"
+- $DOCKER_RUN "cmake ../; "
 - $DOCKER_RUN "cd build-travis; ctest -N; ctest -V"
