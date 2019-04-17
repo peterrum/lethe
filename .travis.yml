@@ -1,24 +1,21 @@
-language: cpp
+sudo: required
 
-dist: trusty
-
-os:
-- linux
+env:
+  - BUILD_TYPE=Release
+  - BUILD_TYPE=Debug
 
 services:
-- docker
+  - docker
+
+notifications:
+  email: false
+
+language: C++
 
 before_install:
-- docker pull dealii/dealii
-
+- docker pull dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease
 
 script:
-- echo "Docker has been pulled"
+- export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:v9.0.0-gcc-mpi-fulldepsspack-debugrelease  /bin/sh -c"
+- echo "Docker instantiated"
 - ls
-- export DEAL_II_DIR=dealii
-- mkdir -p build
-- cd build
-- cmake ${CMAKE_OPTIONS} -DCMAKE_CXX_FLAGS=${CXX_FLAGS} -DCMAKE_BUILD_TYPE=Release ../ 
-- make
-- ctest
-- echo "Finished"
