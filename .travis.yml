@@ -20,7 +20,10 @@ before_install:
 script:
 - export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease  /bin/sh -c"
 - echo "Docker instantiated"
-- $DOCKER_RUN "mkdir app/build-travis;"
+- ls
+- $DOCKER_RUN "cd app;"
+- $DOCKER_RUN "ls "
+- $DOCKER_RUN "mkdir build-travis;"
 - $DOCKER_RUN "ls "
 - $DOCKER_RUN "cd app/build-travis;"
 - $DOCKER_RUN "ls "
