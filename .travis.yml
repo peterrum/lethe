@@ -20,4 +20,9 @@ script:
 - echo "Docker instantiated"
 - pwd
 - ls
-- env | grep DEALII
+- ls /home/dealii
+- export DEAL_II_DIR=/home/dealii/
+- mkdir build
+- cd build
+- cmake ../
+- ctest
