@@ -1,10 +1,6 @@
 sudo: required
 
 env:
-  - BUILD_TYPE=Release
-
-services:
-  - docker
 
 compiler:
 - gcc
@@ -15,17 +11,10 @@ notifications:
 language: C++
 
 before_install:
-- docker pull dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease
 
-script:
-- export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease  /bin/sh -c"
-- echo "Docker instantiated"
-- ls
-- $DOCKER_RUN "cd app;"
-- $DOCKER_RUN "ls "
-- $DOCKER_RUN "mkdir build-travis;"
-- $DOCKER_RUN "ls "
-- $DOCKER_RUN "cd app/build-travis;"
-- $DOCKER_RUN "ls "
-- $DOCKER_RUN "cmake ../ "
-- $DOCKER_RUN "cd build-travis; ctest"
+script: 
+- git clone https://github.com/dealii/candi
+- cd candi
+- echo "Launching candi"
+- ./candi.sh
+- echo "Installation complete"
