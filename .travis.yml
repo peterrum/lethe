@@ -16,7 +16,7 @@ before_install:
 - docker pull dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease
 
 script:
-- export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:v9.0.0-gcc-mpi-fulldepsspack-debugrelease  /bin/sh -c"
+- export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease  /bin/sh -c"
 - echo "Docker instantiated"
 - $DOCKER_RUN "test -d build-travis && rm -rf build-travis; mkdir build-travis; cd build-travis; cmake -GNinja ../; ninja"
 - $DOCKER_RUN "cd build-travis; ctest -N; ctest -V"
