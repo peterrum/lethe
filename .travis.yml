@@ -3,6 +3,8 @@ sudo: required
 env:
   - BUILD_TYPE=Release
 
+dist: xenial
+
 services:
   - docker
 
@@ -15,8 +17,12 @@ notifications:
 language: C++
 
 before_install:
-- docker build dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease
 
 script:
-- echo "Docker instantiated"
-- ls
+- mkdir dealii
+- cd dealii
+- git clone https://github.com/dealii/dealii.git
+- mkdir build
+- cd build
+- cmake ../dealii
+- make -j16
