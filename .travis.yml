@@ -1,12 +1,10 @@
 sudo: required
 
 env:
-  - BUILD_TYPE=Release
 
 dist: xenial
 
 services:
-  - docker
 
 compiler:
 - gcc
@@ -17,6 +15,8 @@ notifications:
 language: C++
 
 before_install:
+- sudo apt update
+- sudo apt-get install trilinos-dev trilinos-all-dev
 
 script:
 - mkdir dealii
@@ -24,5 +24,5 @@ script:
 - git clone https://github.com/dealii/dealii.git
 - mkdir build
 - cd build
-- cmake ../dealii -DCMAKE_BUILD_TYPE=Release
-- make -j4
+- cmake ../dealii -DCMAKE_BUILD_TYPE=Debug -DDEAL_II_COMPONENT_EXAMPLES=OFF
+- make -j2
