@@ -25,4 +25,4 @@ script:
 - mkdir build
 - cd build
 - cmake ../dealii -DCMAKE_BUILD_TYPE=Debug -DDEAL_II_COMPONENT_EXAMPLES=OFF
-- make -j2
+- make -j4
