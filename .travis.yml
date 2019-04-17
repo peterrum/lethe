@@ -20,8 +20,8 @@ script:
 - echo "Docker instantiated"
 - pwd
 - ls
-- ls /home/dealii
-- export DEAL_II_DIR=/home/dealii/
+- $DOCKER_RUN ls /home/dealii
+- $DOCKER_RUN export DEAL_II_DIR=/home/dealii/
 - mkdir build
 - cd build
 - cmake ../
