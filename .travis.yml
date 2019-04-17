@@ -1,6 +1,10 @@
 sudo: required
 
 env:
+  - BUILD_TYPE=Release
+
+services:
+  - docker
 
 compiler:
 - gcc
@@ -11,12 +15,8 @@ notifications:
 language: C++
 
 before_install:
-- sudo apt-get update
-- sudo apt-get install build-essential wget automake autoconf gfortran openmpi-common libopenmpi-dev cmake subversion libblas-dev liblapack-dev libblas3gf liblapack3gf libtool libboost-all-dev tcl tcl-dev environment-modules qt4-dev-tools
+- docker build dealii/dealii:9.0.0-gcc-mpi-fulldepsspack-debugrelease
 
-script: 
-- git clone https://github.com/dealii/candi
-- cd candi
-- echo "Launching candi"
-- ./candi.sh
-- echo "Installation complete"
+script:
+- echo "Docker instantiated"
+- ls
