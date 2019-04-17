@@ -1,0 +1,24 @@
+language: cpp
+
+dist: trusty
+
+os:
+- linux
+
+services:
+- docker
+
+before_install:
+- docker pull dealii/dealii
+
+
+script:
+    - echo "Docker has been pulled"
+    ############################################################################
+    # Build 
+    ############################################################################
+     - mkdir -p build
+     - cd build
+     - cmake ${CMAKE_OPTIONS} -DCMAKE_CXX_FLAGS=${CXX_FLAGS} -DCMAKE_BUILD_TYPE=Release ../ 
+     - make
+     - ctest
