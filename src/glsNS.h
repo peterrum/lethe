@@ -892,7 +892,7 @@ void GLSNavierStokesSolver<dim>::solveAMG (const bool initial_step)
 
   Teuchos::ParameterList            parameter_ml;
   std::unique_ptr< Epetra_MultiVector > distributed_constant_modes;
-  preconditionerOptions.set_parameters(parameter_ml, distributed_constant_modes, system_matrix);
+//  preconditionerOptions.set_parameters(parameter_ml, distributed_constant_modes, system_matrix);
   const double ilu_fill=linearSolverParameters.ilu_fill;
   const double ilu_atol=linearSolverParameters.ilu_atol ;
   const double ilu_rtol=linearSolverParameters.ilu_rtol;
