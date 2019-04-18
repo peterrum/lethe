@@ -38,7 +38,7 @@
 #include <deal.II/lac/solver_gmres.h>
 #include <deal.II/lac/solver_bicgstab.h>
 #include <deal.II/lac/sparse_ilu.h>
-#include <deal.II/lac/affine_constraints.h>
+//#include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/trilinos_solver.h>
 //To be deprecated
 #include <deal.II/lac/constraint_matrix.h>
