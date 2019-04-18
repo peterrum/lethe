@@ -15,5 +15,6 @@ before_install:
 
 script:
 - export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:v9.0.0-gcc-mpi-fulldepscandi-debugrelease  /bin/sh -c"
+- $DOCKER_RUN "pwd; ls"
 - $DOCKER_RUN "test -d app/build-travis && rm -rf app/build-travis; mkdir app/build-travis; cd app/build-travis; cmake -GNinja ../; ninja"
 - $DOCKER_RUN "cd app/build-travis; ctest -N; ctest -V"
