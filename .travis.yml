@@ -13,4 +13,4 @@ before_install:
 
 script:
 - export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:v9.0.0-gcc-mpi-fulldepscandi-debugrelease  /bin/sh -c"
-- $DOCKER_RUN "mkdir build; cd build; pwd; cmake ../app; make; ctest"
+- $DOCKER_RUN "rm -r build; mkdir build; cd build; pwd; cmake ../app; make; ctest"
