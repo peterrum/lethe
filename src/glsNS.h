@@ -40,6 +40,9 @@
 #include <deal.II/lac/sparse_ilu.h>
 #include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/trilinos_solver.h>
+//To be deprecated
+#include <deal.II/lac/constraint_matrix.h>
+
 // Trilinos includes
 #include <deal.II/lac/trilinos_sparse_matrix.h>
 #include <deal.II/lac/trilinos_vector.h>
@@ -163,8 +166,10 @@ private:
   IndexSet                         locally_relevant_dofs;
 
 
-  AffineConstraints<double>        zero_constraints;
-  AffineConstraints<double>        nonzero_constraints;
+  //AffineConstraints<double>        zero_constraints;
+  //AffineConstraints<double>        nonzero_constraints;
+  ConstraintMatrix                 zero_constraints;
+  ConstraintMatrix                 nonzero_constraints;
 
   SparsityPattern                  sparsity_pattern;
   TrilinosWrappers::SparseMatrix   system_matrix;
@@ -668,7 +673,8 @@ void GLSNavierStokesSolver<dim>::assembleGLS(const bool initial_step,
 
 
           cell->get_dof_indices (local_dof_indices);
-          const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+          //          const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+          const ConstraintMatrix &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
           if (assemble_matrix)
           {
               constraints_used.distribute_local_to_global(local_matrix,
@@ -745,7 +751,8 @@ void GLSNavierStokesSolver<dim>::solveGMRES (const bool initial_step)
 {
   TimerOutput::Scope t(computing_timer, "solve");
   if (linearSolverParameters.rhsCorr) projectRHSPressureConstant();
-  const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+//  const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+  const ConstraintMatrix &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
   const double linear_solver_tolerance = std::max(linearSolverParameters.relative_residual*system_rhs.l2_norm(),linearSolverParameters.minimum_residual);
 
   if (linearSolverParameters.verbosity!=Parameters::LinearSolver::quiet)
@@ -790,13 +797,14 @@ void GLSNavierStokesSolver<dim>::solveBiCGStab(const bool initial_step)
   TimerOutput::Scope t(computing_timer, "solve");
   if (linearSolverParameters.rhsCorr) projectRHSPressureConstant();
 
-  const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+//  const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+  const ConstraintMatrix &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
   const double linear_solver_tolerance = std::max(linearSolverParameters.relative_residual*system_rhs.l2_norm(),linearSolverParameters.minimum_residual);
   if (linearSolverParameters.verbosity!=Parameters::LinearSolver::quiet)
   {
     pcout << "  -Tolerance of iterative solver is : " << std::setprecision(linearSolverParameters.residual_precision) << linear_solver_tolerance << std::endl;
   }
- TrilinosWrappers::MPI::Vector completely_distributed_solution (locally_owned_dofs, mpi_communicator);
+  TrilinosWrappers::MPI::Vector completely_distributed_solution (locally_owned_dofs, mpi_communicator);
 
   SolverControl solver_control (linearSolverParameters.max_iterations, linear_solver_tolerance,true,true);
   TrilinosWrappers::SolverBicgstab solver(solver_control);
@@ -832,7 +840,8 @@ void GLSNavierStokesSolver<dim>::solveAMG (const bool initial_step)
 {
   TimerOutput::Scope t(computing_timer, "solve");
 
-  const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+//  const AffineConstraints<double> &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
+  const ConstraintMatrix &constraints_used = initial_step ? nonzero_constraints : zero_constraints;
 
   const double linear_solver_tolerance = std::max(linearSolverParameters.relative_residual*system_rhs.l2_norm(),linearSolverParameters.minimum_residual);
   if (linearSolverParameters.verbosity!=Parameters::LinearSolver::quiet)
