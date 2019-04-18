@@ -16,5 +16,6 @@ script:
 - sudo usermod -a -G docker $USER
 - $DOCKER_RUN "pwd; ls -la"
 - $DOCKER_RUN "pwd; ls -la ; mkdir test; ls -la; cd test; pwd"
+- $DOCKER_RUN "pwd; ls -la /home/dealii/app"
 - $DOCKER_RUN "cd app; pwd; mkdir /home/dealii/app/build-travis; cd build-travis; pwd; cmake -GNinja ../; ninja"
 - $DOCKER_RUN "cd app/build-travis; ctest -N; ctest -V"
