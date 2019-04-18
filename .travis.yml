@@ -1,13 +1,9 @@
 sudo: required
 
-env:
-
 dist: xenial
 
 services:
-
-compiler:
-- gcc
+  - docker
 
 notifications:
   email: false
@@ -15,14 +11,9 @@ notifications:
 language: C++
 
 before_install:
-- sudo apt update
-- sudo apt-get install trilinos-dev trilinos-all-dev
+- docker pull dealii/dealii:v9.0.0-gcc-mpi-fulldepscandi-debugrelease
 
 script:
-- mkdir dealii
-- cd dealii
-- git clone https://github.com/dealii/dealii.git
-- mkdir build
-- cd build
-- cmake ../dealii -DCMAKE_BUILD_TYPE=Debug -DDEAL_II_COMPONENT_EXAMPLES=OFF
-- make -j4
+- export DOCKER_RUN="docker run -P -v `pwd`:/home/dealii/app:rw dealii/dealii:v9.0.0-gcc-mpi-fulldepscandi-debugrelease  /bin/sh -c"
+- $DOCKER_RUN "test -d app/build-travis && rm -rf app/build-travis; mkdir app/build-travis; cd app/build-travis; cmake -GNinja ../; ninja"
+- $DOCKER_RUN "cd app/build-travis; ctest -N; ctest -V"
