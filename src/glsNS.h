@@ -195,6 +195,7 @@ private:
 
   double                         globalVolume_;
   const bool                     SUPG=true;
+  const bool                     acomp=true;
   const double                   GLS_u_scale=1;
   PVDHandler                     pvdhandler;
 
@@ -535,6 +536,7 @@ void GLSNavierStokesSolver<dim>::assembleGLS(const bool initial_step,
 
   // Values at previous time step for backward Euler scheme
   std::vector<Tensor<1, dim> >  p1_velocity_values           (n_q_points);
+  std::vector<double>           p1_pressure_values           (n_q_points);
 
   // Element size
   double h ;
@@ -561,8 +563,10 @@ void GLSNavierStokesSolver<dim>::assembleGLS(const bool initial_step,
           forcing_function->vector_value_list(fe_values.get_quadrature_points(), rhs_force);
 
           if (scheme != Parameters::SimulationControl::steady)
+          {
             fe_values[velocities].get_function_values(solution_m1,p1_velocity_values);
-
+            fe_values[pressure].get_function_values(solution_m1,p1_pressure_values);
+          }
 
           for (unsigned int q=0; q<n_q_points; ++q)
           {
@@ -593,6 +597,13 @@ void GLSNavierStokesSolver<dim>::assembleGLS(const bool initial_step,
 
               for (unsigned int i=0; i<dofs_per_cell; ++i)
               {
+                auto strong_residual =(
+                                         sdt* (present_velocity_values[q]-p1_velocity_values[q])
+                                        + present_velocity_gradients[q]*present_velocity_values[q]
+                                        + present_pressure_gradients[q]
+                                        - viscosity_* present_velocity_laplacians[q]
+                                        - force
+                                      );
 
                   if (assemble_matrix)
                   {
@@ -622,6 +633,36 @@ void GLSNavierStokesSolver<dim>::assembleGLS(const bool initial_step,
                           if (scheme == Parameters::SimulationControl::backward)
                               local_matrix(i, j) += -tau * sdt * phi_u[j] * grad_phi_p[i] *  fe_values.JxW(q);
 
+                          // Artificial compressibility
+                          if (scheme == Parameters::SimulationControl::backward && acomp)
+                          {
+
+                            local_matrix(i, j) +=
+                               (strong_residual*strong_residual)
+                               * tau * sdt *  phi_p[j] * phi_p[i] * fe_values.JxW(q);
+
+                            //local_matrix(i, j) +=
+                            //   (
+                            //      sdt* phi_u[j]
+                            //    + present_velocity_gradients[q]*phi_u[j]
+                            //    + grad_phi_u[j]*present_velocity_values[q]
+                            //    + grad_phi_p[j]
+                            //    - viscosity_* laplacian_phi_u[j]
+                            //   ) *
+                            //   strong_residual
+                            //   * tau * sdt * (present_pressure_values[q]-p1_pressure_values[q]) * phi_p[i] * fe_values.JxW(q);
+                            //
+                            //local_matrix(i, j) +=
+                            //   strong_residual*
+                            //   (
+                            //      sdt* phi_u[j]
+                            //    + present_velocity_gradients[q]*phi_u[j]
+                            //    + grad_phi_u[j]*present_velocity_values[q]
+                            //    + grad_phi_p[j]
+                            //    - viscosity_* laplacian_phi_u[j]
+                            //   )
+                            //   * tau * sdt * (present_pressure_values[q]-p1_pressure_values[q]) * phi_p[i] * fe_values.JxW(q);
+                          }
                           // Jacobian is currently incomplete
                           if (SUPG)
                           {
@@ -677,6 +718,16 @@ void GLSNavierStokesSolver<dim>::assembleGLS(const bool initial_step,
 
                   if (scheme == Parameters::SimulationControl::backward)
                    local_rhs(i) += tau * sdt* (present_velocity_values[q]-p1_velocity_values[q])*grad_phi_p[i]* fe_values.JxW(q);
+
+                  // Artificial compressibility
+                  if (scheme == Parameters::SimulationControl::backward && acomp)
+                  {
+                    local_rhs(i) -=
+                                   (strong_residual * strong_residual)
+                                   * tau * sdt * (present_pressure_values[q]-p1_pressure_values[q])*phi_p[i]* fe_values.JxW(q);
+
+                  }
+
 
                   ////             SUPG GLS term
                   if (SUPG)
