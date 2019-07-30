@@ -1,5 +1,4 @@
 # top level CMakeLists.txt
 
-ENABLE_TESTING()
-ADD_SUBDIRECTORY(directSteadyNS)
-ADD_SUBDIRECTORY(IBSteadyNS)
+ADD_SUBDIRECTORY(direct_steadyNS)
+ADD_SUBDIRECTORY(advection_diffusion)
