@@ -48,3 +48,13 @@
 
 # meshes
 *.msh
+
+# Ignore all build file 
+build/*
+
+# Ingnore build file for prototype code
+prototypes/step-60-V2/cmake-build-debug/*
+
+# Ingnore build file for prototype code
+prototypes/step-60-V2/.idea/*
+

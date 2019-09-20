@@ -1,7 +1,7 @@
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/timer.h>
-#include <deal.II/lac/sparse_ilu.h>
+
 // define public parameter
 #include <deal.II/base/parameter_acceptor.h>
 #include <deal.II/grid/tria.h>
@@ -46,11 +46,6 @@
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/grid/grid_refinement.h>
-
-
-#include <deal.II/lac/block_vector.h>
-#include <deal.II/lac/block_sparsity_pattern.h>
-#include <deal.II/lac/block_sparse_matrix.h>
 // make it possible to directly call dealII function
 
 
@@ -159,22 +154,22 @@ namespace mystep60 {
 
 
         // sparsity patterne need during the resolution
-        BlockSparsityPattern stiffness_sparsity;
-        BlockSparsityPattern coupling_sparsity;
-        BlockSparseMatrix<double> stiffnes_matrix;
-        BlockSparseMatrix<double> coupling_matrix;
-        BlockSparseMatrix<double> global_matrix;
-        BlockSparseMatrix<double> coupling_transpose;
+        SparsityPattern stiffness_sparsity;
+        SparsityPattern coupling_sparsity;
+        SparseMatrix<double> stiffnes_matrix;
+        SparseMatrix<double> coupling_matrix;
+        SparseMatrix<double> global_matrix;
+        SparseMatrix<double> coupling_transpose;
 
         // make possible to have hanging not and pass boundary condition on it
         AffineConstraints<double> constraints;
 
         // vector used in the evaluation of the function
-        BlockVector<double> solution;
-        BlockVector<double> rhs;
-        BlockVector<double> lambda;
-        BlockVector<double> sub_domain_rhs;
-        BlockVector<double> sub_domain_value;
+        Vector<double> solution;
+        Vector<double> rhs;
+        Vector<double> lambda;
+        Vector<double> sub_domain_rhs;
+        Vector<double> sub_domain_value;
 
         // provide stats of the resolution
         TimerOutput monitor;
