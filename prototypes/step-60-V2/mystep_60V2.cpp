@@ -2,6 +2,10 @@
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/timer.h>
 
+#include <deal.II/lac/block_sparse_matrix.h>
+#include <deal.II/lac/block_vector.h>
+#include <deal.II/lac/identity_matrix.h>
+
 // define public parameter
 #include <deal.II/base/parameter_acceptor.h>
 #include <deal.II/grid/tria.h>
@@ -65,7 +69,7 @@ namespace mystep60 {
             Parameters();
 
             // define the number of time that the code is gonna refine the first mesh
-            unsigned int initial_refinement=5;
+            unsigned int initial_refinement=3;
             // define the number of refinement that is applied on the part of the base mesh and the sub domain where the condtions are imposed
             unsigned int delta_refinement=0;
             // number of refinement of the grid that make the subdomaine
@@ -108,6 +112,8 @@ namespace mystep60 {
 
         void setup_matrix();
 
+        void setup_block_matrix();
+
         void setup_matrix_sub();
 
         // define the matrix that make the coupling  of the two domain
@@ -116,7 +122,7 @@ namespace mystep60 {
         // creat the big coupled systeme matrix
         void define_probleme();
 
-
+        void combine_small_matrix();
         void solve();
         void solve_direct();
 
@@ -156,9 +162,13 @@ namespace mystep60 {
         // sparsity patterne need during the resolution
         SparsityPattern stiffness_sparsity;
         SparsityPattern coupling_sparsity;
+        SparsityPattern identity_sparsity;
+        BlockSparsityPattern global_sparsity;
         SparseMatrix<double> stiffnes_matrix;
         SparseMatrix<double> coupling_matrix;
-        SparseMatrix<double> global_matrix;
+        BlockSparseMatrix<double> global_matrix;
+        IdentityMatrix identity_matrix;
+        SparseMatrix<double> identity_sparse;
         SparseMatrix<double> coupling_transpose;
 
         // make possible to have hanging not and pass boundary condition on it
@@ -170,6 +180,8 @@ namespace mystep60 {
         Vector<double> lambda;
         Vector<double> sub_domain_rhs;
         Vector<double> sub_domain_value;
+        BlockVector<double> global_solution;
+        BlockVector<double> global_rhs;
 
         // provide stats of the resolution
         TimerOutput monitor;
@@ -236,7 +248,7 @@ namespace mystep60 {
         Vector<float> estimated_error_per_cell(mesh->n_active_cells());
 
         KellyErrorEstimator<spacedim>::estimate(*dof_handler,QGauss<spacedim-1>(fe->degree+1),
-                                           std::map<types::boundary_id,const Function <spacedim> *>(),solution,estimated_error_per_cell);
+                                           std::map<types::boundary_id,const Function <spacedim> *>(),global_solution.block(0),estimated_error_per_cell);
 
         GridRefinement::refine_and_coarsen_fixed_number(*mesh,estimated_error_per_cell,0.3,0.03);
         mesh->execute_coarsening_and_refinement();
@@ -328,8 +340,51 @@ namespace mystep60 {
 
         //setup the global mesh from there
         setup_matrix();
-    }
 
+    }
+    template<int dim, int spacedim>
+    void DistributedLagrangeProblem<dim, spacedim>::setup_block_matrix() {
+
+        //define the shape of the sparsity pattern
+        global_sparsity.reinit(2,2);
+        const unsigned int max_dof_coupling=(dof_handler_sub->max_couplings_between_dofs()+dof_handler->max_couplings_between_dofs());
+        global_sparsity.block(0,0).reinit(dof_handler->n_dofs(),dof_handler->n_dofs(),max_dof_coupling);
+        global_sparsity.block(1,0).reinit(dof_handler_sub->n_dofs(),dof_handler->n_dofs(),max_dof_coupling);
+        global_sparsity.block(0,1).reinit(dof_handler->n_dofs(),dof_handler_sub->n_dofs(),max_dof_coupling);
+        global_sparsity.block(1,1).reinit(dof_handler_sub->n_dofs(),dof_handler_sub->n_dofs(),max_dof_coupling);
+        global_sparsity.collect_sizes();
+
+        //initialise a matrix to do the transpose of C
+        identity_matrix.reinit(dof_handler->n_dofs());
+        DynamicSparsityPattern dsp_identity(dof_handler->n_dofs(),dof_handler->n_dofs());
+        identity_sparsity.copy_from(dsp_identity);
+        identity_sparse.reinit(identity_sparsity);
+        identity_sparse.operator=(identity_matrix);
+
+        //define the sparcity block
+        global_sparsity.block(0,0).copy_from(stiffness_sparsity);
+        global_sparsity.block(1,0).copy_from(coupling_sparsity);
+        global_sparsity.block(0,1).copy_from(coupling_sparsity);
+        global_sparsity.block(1,1).copy_from(coupling_sparsity);
+
+
+        //global_sparsity.compress();
+        global_matrix.reinit(global_sparsity);
+
+
+        global_solution.reinit(2);
+        global_solution.block(0).reinit(dof_handler->n_dofs());
+        global_solution.block(1).reinit(dof_handler_sub->n_dofs());
+        global_solution.collect_sizes();
+
+
+        global_rhs.reinit(2);
+        global_rhs.block(0).reinit(dof_handler->n_dofs());
+        global_rhs.block(1).reinit(dof_handler_sub->n_dofs());
+        global_rhs.collect_sizes();
+
+
+    }
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::setup_matrix() {
@@ -345,7 +400,7 @@ namespace mystep60 {
         }
         constraints.close();
 
-        //define the dynamic sparcdity pattern for the domain
+        //define the dynamic sparcity pattern for the domain
 
         DynamicSparsityPattern dsp(dof_handler->n_dofs(), dof_handler->n_dofs());
         DoFTools::make_sparsity_pattern(*dof_handler, dsp, constraints);
@@ -397,11 +452,11 @@ namespace mystep60 {
     void DistributedLagrangeProblem<dim, spacedim>::define_probleme() {
         {//Assemble the matrix and the right hand side whit fancy function contrary to the usual loop
             TimerOutput::Scope timer_section(monitor, "Assemble System");
-            MatrixTools::create_laplace_matrix(*dof_handler, QGauss<spacedim>(2 * fe->degree + 1), stiffnes_matrix,
+            MatrixTools::create_laplace_matrix(*dof_handler, QGauss<spacedim>(2 * fe->degree + 1), global_matrix.block(0,0),
                                                static_cast<const Function<spacedim> *>(nullptr), constraints);
 
             VectorTools::create_right_hand_side(*sub_domain_mapping, *dof_handler_sub,
-                                                QGauss<dim>(2 * fe_sub->degree + 1), sub_domain_value_function, sub_domain_rhs);
+                                                QGauss<dim>(2 * fe_sub->degree + 1), sub_domain_value_function, global_rhs.block(1));
 
 
         }
@@ -410,7 +465,7 @@ namespace mystep60 {
                 TimerOutput::Scope timer_section(monitor, "Assemble Coupling - Mass Matrix");
                 QGauss<dim> quad(parameters.coupling_quadrature_order);
                 NonMatching::create_coupling_mass_matrix(*mesh_tools, *dof_handler, *dof_handler_sub, quad,
-                                                         coupling_matrix,
+                                                         global_matrix.block(1,0),
                                                          AffineConstraints < double > (), ComponentMask(),
                                                          ComponentMask(),
                                                          *sub_domain_mapping);
@@ -425,6 +480,18 @@ namespace mystep60 {
         }
     }
 
+    template<int dim, int spacedim>
+    void DistributedLagrangeProblem<dim, spacedim>::combine_small_matrix() {
+        global_matrix.block(1,0).Tmmult(global_matrix.block(0,1),identity_sparse);
+
+        //global_matrix.block(0,1).copy_from(global_matrix.block(1,0));
+        //global_matrix.block(0,0).copy_from(stiffnes_matrix);
+        //global_matrix.block(1,0).copy_from(coupling_matrix);
+        //global_matrix.block(0,1).copy_from(coupling_matrix);
+        //global_matrix.block(1,1).copy_from(coupling_matrix);
+
+    }
+
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::solve() {
@@ -433,10 +500,10 @@ namespace mystep60 {
         // developpe the inverse of the the stiffness matrix
 
         SparseDirectUMFPACK K_inv_umfpack;
-        K_inv_umfpack.initialize(stiffnes_matrix);
-        auto K = linear_operator(stiffnes_matrix);
-        auto Ct = linear_operator(coupling_matrix);
-        auto C = transpose_operator(Ct);
+        K_inv_umfpack.initialize(global_matrix.block(0,0));
+        auto K = linear_operator(global_matrix.block(0,0));
+        auto Ct = linear_operator(global_matrix.block(1,0));
+        auto C = linear_operator(global_matrix.block(0,1));
         auto K_inv = linear_operator(K, K_inv_umfpack);
 
 
@@ -450,41 +517,20 @@ namespace mystep60 {
         //const auto preconditioner_S = inverse_operator(S,solver_aS, PreconditionIdentity());
         SolverCG<Vector<double>> solver_cg(schur_solver_control);
         auto S_inv = inverse_operator(S, solver_cg,PreconditionIdentity());
-        lambda = S_inv * sub_domain_rhs;
-        solution = K_inv * Ct * lambda;
-        constraints.distribute(solution);
+        global_solution.block(1) = S_inv * global_rhs.block(1);
+        global_solution.block(0) = K_inv * Ct * global_solution.block(1);
+        constraints.distribute(global_solution.block(0));
     }
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::solve_direct() {
-        //solve the probleme
-        TimerOutput::Scope timer_section(monitor, "Solve");
-        // developpe the inverse of the the stiffness matrix
 
-        SparseDirectUMFPACK K_inv_umfpack;
-        K_inv_umfpack.initialize(stiffnes_matrix);
-        auto K = linear_operator(stiffnes_matrix);
-        auto Ct = linear_operator(coupling_matrix);
-        auto C = transpose_operator(Ct);
-        auto K_inv = linear_operator(K, K_inv_umfpack);
-
-
-
-        //Schur Complement method
-        auto S = C * K_inv * Ct;
-        //base on step 20 methode whit schur operator
-
-        //IterationNumberControl iteration_number_control_aS(30, 1.e-11);
-        //SolverCG<>             solver_aS(iteration_number_control_aS);
-        //const auto preconditioner_S = inverse_operator(S,solver_aS, PreconditionIdentity());
-        SparseDirectUMFPACK L_inv_umfpack;
-        L_inv_umfpack.initialize(S);
-        //SolverCG<Vector<double>> solver_cg(schur_solver_control);
-        //auto S_inv = inverse_operator(S, solver_cg,PreconditionIdentity());
-        //auto S_inv = linear_operator(S,L_inv_umfpack);
-        L_inv_umfpack.vmult(lambda,sub_domain_rhs);
-        solution = K_inv * Ct * lambda;
-        constraints.distribute(solution);
+        SolverControl solver_control(1000, 1e-12);
+        SolverCG<BlockVector<double>>    solver(solver_control);
+        //PreconditionSSOR<> preconditioner;
+        //preconditioner.initialize(global_matrix, 1.2);
+        solver.solve(global_matrix, global_solution, global_rhs, PreconditionIdentity());
+        constraints.distribute(global_solution.block(0));
     }
 
     template<int dim, int spacedim>
@@ -496,7 +542,7 @@ namespace mystep60 {
         std::ofstream embedding_out_file("embedding.vtu");
 // ouput domain results
         embedding_out.attach_dof_handler(*dof_handler);
-        embedding_out.add_data_vector(solution, "solution");
+        embedding_out.add_data_vector(global_solution.block(0), "solution");
         embedding_out.build_patches(parameters.embedded_fe_deg);
         embedding_out.write_vtu(embedding_out_file);
 
@@ -504,7 +550,7 @@ namespace mystep60 {
         DataOut<dim, DoFHandler<dim, spacedim>> embedded_out;
         std::ofstream embedded_out_file("embedded.vtu");
         embedded_out.attach_dof_handler(*dof_handler_sub);
-        embedded_out.add_data_vector(lambda, "lambda");
+        embedded_out.add_data_vector(global_solution.block(1), "lambda");
         embedded_out.add_data_vector(sub_domain_value, "g");
         embedded_out.build_patches(*sub_domain_mapping,
                                    parameters.domain_fe_deg);
@@ -531,7 +577,9 @@ namespace mystep60 {
             std::cout << "number of active cells:" << mesh->n_active_cells() << std::endl;
 
             coulpling_system();
+            setup_block_matrix();
             define_probleme();
+            combine_small_matrix();
             solve();
 
         }
