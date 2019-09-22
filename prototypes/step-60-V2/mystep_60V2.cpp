@@ -55,6 +55,7 @@
 #include <deal.II/numerics/matrix_creator.templates.h>
 #include <deal.II/grid/grid_refinement.h>
 #include <deal.II/lac/block_matrix_array.h>
+
 // make it possible to directly call dealII function
 
 
@@ -76,7 +77,7 @@ namespace mystep60 {
             // define the number of time that the code is gonna refine the first mesh
             unsigned int initial_refinement=4;
             // define the number of refinement that is applied on the part of the base mesh and the sub domain where the condtions are imposed
-            unsigned int delta_refinement=3;
+            unsigned int delta_refinement=0;
             // number of refinement of the grid that make the subdomaine
             unsigned int initial_embedded_grid_refinement=8;
             // we are working on a unit square for this exemple so we need to define which boundary as dirichlet =0
@@ -388,7 +389,7 @@ namespace mystep60 {
         global_sparsity.block(0,1).copy_from(coupling_sparsity);
 
 
-
+        // difine the sparsity pattern
         global_sparsity_2.reinit(dof_handler_sub->n_dofs(),dof_handler_sub->n_dofs(),3);
 
         for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
@@ -411,27 +412,20 @@ namespace mystep60 {
 
         global_sparsity.block(1,1).copy_from(global_sparsity_2);
 
-        //global_matrix.block(1,1).reinit(identity_sparsity_2);
-        //global_matrix.block(1,1).operator=(identity_matrix_2);
-        //global_matrix.block(1,1).operator*=(0.01);
 
-
-
-
-        //global_sparsity.compress();
         global_matrix.reinit(global_sparsity);
-
+        double relative_size=1000;
         for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
             if (i == 0) {
-                global_matrix.block(1,1).set(i, i, 1);
-                global_matrix.block(1,1).set(i, i + 1, -1);
+                global_matrix.block(1,1).set(i, i, 2*relative_size);
+                global_matrix.block(1,1).set(i, i + 1, -relative_size);
             } else if (i == dof_handler_sub->n_dofs() - 1) {
-                global_matrix.block(1,1).set(i, i, 1);
-                global_matrix.block(1,1).set(i, i - 1, -1);
+                global_matrix.block(1,1).set(i, i, relative_size);
+                global_matrix.block(1,1).set(i, i - 1, -relative_size);
             } else {
-                global_matrix.block(1,1).set(i, i, 1);
-                global_matrix.block(1,1).set(i, i - 1, 1);
-                global_matrix.block(1,1).set(i, i + 1, -1);
+                global_matrix.block(1,1).set(i, i, 2*relative_size);
+                global_matrix.block(1,1).set(i, i - 1, -relative_size);
+                global_matrix.block(1,1).set(i, i + 1, -relative_size);
             }
         }
 
@@ -629,34 +623,37 @@ namespace mystep60 {
         SolverControl solver_control(10000, 1e-12);
         SolverCG<BlockVector<double>>    solver(solver_control);
         PreconditionJacobi<BlockSparseMatrix<double>> preconditioner;
-        preconditioner.initialize(global_matrix, 1.2);
+
 
         std::cout << "global matrix size: " << global_matrix.block(0,0).m() << " by : "<< global_matrix.block(0,0).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(1,1).m() << " by : "<< global_matrix.block(1,1).n() << std::endl;
         unsigned int k=0;
-        while (global_matrix.block(1,1).residual(residual_value,global_solution.block(1),global_rhs.block(1)) > double(1.e-12)| k<100) {
+        while (global_matrix.block(1,1).residual(residual_value,global_solution.block(1),global_rhs.block(1)) > double(1.e-12) & k<100) {
+            preconditioner.initialize(global_matrix);
             solver.solve(global_matrix, global_solution, global_rhs, preconditioner);
 
             std::cout << "residual: " << global_matrix.block(1, 1).residual(residual_value, global_solution.block(1),global_rhs.block(1)) << std::endl;
+            std::cout << "lambda " << global_solution.block(1)(1) << std::endl;
             k += 1;
 
             for (unsigned int i = 0; i < dof_handler_sub->n_dofs(); ++i) {
                 if (i == 0)
                     global_matrix.block(1,1).set(i, i + 1, -global_solution.block(1)(i) / global_solution.block(1)(i + 1));
-                else if (i == dof_handler_sub->n_dofs() - 1)
-                    global_matrix.block(1,1).set(i, i, -global_solution.block(1)(i - 1) / global_solution.block(1)(i));
-                else
-                    global_matrix.block(1,1).set(i, i + 1, -(global_solution.block(1)(i - 1) + global_solution.block(1)(i))/global_solution.block(1)(i + 1));
-
+                else if (i == dof_handler_sub->n_dofs() - 1) {
+                    global_matrix.block(1, 1).set(i, i - 1, global_matrix.block(1, 1)(i - 1, i));
+                    global_matrix.block(1, 1).set(i, i, -global_solution.block(1)(i - 1) *global_matrix.block(1, 1)(i,i-1)/ global_solution.block(1)(i));
+                }
+                else {
+                    global_matrix.block(1, 1).set(i, i - 1, global_matrix.block(1, 1)(i - 1, i));
+                    global_matrix.block(1, 1).set(i, i + 1,
+                                                  -(global_solution.block(1)(i - 1)*global_matrix.block(1, 1)(i,i-1) + global_solution.block(1)(i)*global_matrix.block(1, 1)(i,i)) /
+                                                  global_solution.block(1)(i + 1));
+                }
                 }
         }
 
-            //for (unsigned int i=0 ; i<(dof_handler->n_dofs());++i)
-            //{
-            //global_solution.block(0)(i)+=global_solution_2(i);
-            //}
 
         constraints.distribute(global_solution.block(0));
     }
@@ -696,7 +693,7 @@ namespace mystep60 {
 
 
 
-        for (unsigned int cycle=0 ; cycle<1 ; ++cycle) {
+        for (unsigned int cycle=0 ; cycle<3 ; ++cycle) {
             if (cycle==0)
             setup_grid();
             else
@@ -708,7 +705,7 @@ namespace mystep60 {
             setup_block_matrix();
             define_probleme();
             combine_small_matrix();
-            solve();
+            solve_direct();
 
         }
         output();
