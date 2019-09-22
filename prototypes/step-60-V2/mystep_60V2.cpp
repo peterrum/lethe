@@ -5,6 +5,9 @@
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/identity_matrix.h>
+#include <deal.II/lac/precondition_block.h>
+
+
 
 // define public parameter
 #include <deal.II/base/parameter_acceptor.h>
@@ -49,7 +52,9 @@
 #include <fstream>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/error_estimator.h>
+#include <deal.II/numerics/matrix_creator.templates.h>
 #include <deal.II/grid/grid_refinement.h>
+#include <deal.II/lac/block_matrix_array.h>
 // make it possible to directly call dealII function
 
 
@@ -69,11 +74,11 @@ namespace mystep60 {
             Parameters();
 
             // define the number of time that the code is gonna refine the first mesh
-            unsigned int initial_refinement=3;
+            unsigned int initial_refinement=4;
             // define the number of refinement that is applied on the part of the base mesh and the sub domain where the condtions are imposed
-            unsigned int delta_refinement=0;
+            unsigned int delta_refinement=3;
             // number of refinement of the grid that make the subdomaine
-            unsigned int initial_embedded_grid_refinement=12;
+            unsigned int initial_embedded_grid_refinement=8;
             // we are working on a unit square for this exemple so we need to define which boundary as dirichlet =0
             std::list<types::boundary_id> homogeneous_dirichlet_ids{0, 1, 2, 3};
             // finite element degree on the ebedded domain
@@ -133,6 +138,7 @@ namespace mystep60 {
         // std:: unique_ptr is there to permite overload of variable not sure ?????????????????????????????????????????????????????????????
         std::unique_ptr<Triangulation<spacedim>> mesh;
         std::unique_ptr<GridTools::Cache<spacedim,spacedim>> mesh_tools;
+
         std::unique_ptr<FiniteElement<spacedim>> fe;
         std::unique_ptr<DoFHandler<spacedim>> dof_handler;
 
@@ -162,14 +168,22 @@ namespace mystep60 {
         // sparsity patterne need during the resolution
         SparsityPattern stiffness_sparsity;
         SparsityPattern coupling_sparsity;
-        SparsityPattern identity_sparsity;
         BlockSparsityPattern global_sparsity;
+        SparsityPattern global_sparsity_2;
+
         SparseMatrix<double> stiffnes_matrix;
         SparseMatrix<double> coupling_matrix;
         BlockSparseMatrix<double> global_matrix;
+        SparseMatrix<double> global_matrix_2;
+        SparseMatrix<double> complement_stiffnes_matrix;
+
+
+        SparsityPattern identity_sparsity;
         IdentityMatrix identity_matrix;
         SparseMatrix<double> identity_sparse;
-        SparseMatrix<double> coupling_transpose;
+        SparsityPattern identity_sparsity_2;
+        IdentityMatrix identity_matrix_2;
+        SparseMatrix<double> identity_sparse_2;
 
         // make possible to have hanging not and pass boundary condition on it
         AffineConstraints<double> constraints;
@@ -178,11 +192,13 @@ namespace mystep60 {
         Vector<double> solution;
         Vector<double> rhs;
         Vector<double> lambda;
+        Vector<double> residual_value;
         Vector<double> sub_domain_rhs;
         Vector<double> sub_domain_value;
         BlockVector<double> global_solution;
         BlockVector<double> global_rhs;
-
+        Vector<double> global_solution_2;
+        Vector<double> global_rhs_2;
         // provide stats of the resolution
         TimerOutput monitor;
 
@@ -236,8 +252,8 @@ namespace mystep60 {
 
         schur_solver_control.declare_parameters_call_back.connect([]() -> void {
             ParameterAcceptor::prm.set("Max steps", "10000");
-            ParameterAcceptor::prm.set("Reduction", "1.e-6");
-            ParameterAcceptor::prm.set("Tolerance", "1.e-6");
+            ParameterAcceptor::prm.set("Reduction", "1.e-12");
+            ParameterAcceptor::prm.set("Tolerance", "1.e-12");
         });
 
     }
@@ -267,6 +283,7 @@ namespace mystep60 {
         // refine it according to the parameters
         mesh->refine_global(parameters.initial_refinement);
         mesh_tools = std_cxx14::make_unique<GridTools::Cache<spacedim, spacedim>>(*mesh);
+
         // generate mesh of subdomain
         mesh_sub = std_cxx14::make_unique<Triangulation<dim, spacedim>>();
         GridGenerator::hyper_cube(*mesh_sub);
@@ -361,26 +378,75 @@ namespace mystep60 {
         identity_sparse.reinit(identity_sparsity);
         identity_sparse.operator=(identity_matrix);
 
+
+
+
+        //DynamicSparsityPattern dsp_fill(dof_handler_sub->n_dofs(),dof_handler_sub->n_dofs());
         //define the sparcity block
         global_sparsity.block(0,0).copy_from(stiffness_sparsity);
         global_sparsity.block(1,0).copy_from(coupling_sparsity);
         global_sparsity.block(0,1).copy_from(coupling_sparsity);
-        global_sparsity.block(1,1).copy_from(coupling_sparsity);
+
+
+
+        global_sparsity_2.reinit(dof_handler_sub->n_dofs(),dof_handler_sub->n_dofs(),3);
+
+        for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
+            if (i == 0) {
+                global_sparsity_2.add(0, i);
+                global_sparsity_2.add(0, i + 1);
+            }
+            else if(i == dof_handler_sub->n_dofs()-1){
+                global_sparsity_2.add(i, i);
+                global_sparsity_2.add(i, i -1);
+            }
+            else{
+                global_sparsity_2.add(i, i);
+                global_sparsity_2.add(i, i -1);
+                global_sparsity_2.add(i, i + 1);
+            }
+        }
+        global_sparsity_2.compress();
+
+
+        global_sparsity.block(1,1).copy_from(global_sparsity_2);
+
+        //global_matrix.block(1,1).reinit(identity_sparsity_2);
+        //global_matrix.block(1,1).operator=(identity_matrix_2);
+        //global_matrix.block(1,1).operator*=(0.01);
+
+
 
 
         //global_sparsity.compress();
         global_matrix.reinit(global_sparsity);
+
+        for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
+            if (i == 0) {
+                global_matrix.block(1,1).set(i, i, 1);
+                global_matrix.block(1,1).set(i, i + 1, -1);
+            } else if (i == dof_handler_sub->n_dofs() - 1) {
+                global_matrix.block(1,1).set(i, i, 1);
+                global_matrix.block(1,1).set(i, i - 1, -1);
+            } else {
+                global_matrix.block(1,1).set(i, i, 1);
+                global_matrix.block(1,1).set(i, i - 1, 1);
+                global_matrix.block(1,1).set(i, i + 1, -1);
+            }
+        }
+
 
 
         global_solution.reinit(2);
         global_solution.block(0).reinit(dof_handler->n_dofs());
         global_solution.block(1).reinit(dof_handler_sub->n_dofs());
         global_solution.collect_sizes();
-
-
+        global_solution_2.reinit(dof_handler->n_dofs()+dof_handler_sub->n_dofs());
+        residual_value.reinit(dof_handler_sub->n_dofs());
         global_rhs.reinit(2);
         global_rhs.block(0).reinit(dof_handler->n_dofs());
         global_rhs.block(1).reinit(dof_handler_sub->n_dofs());
+        global_rhs_2.reinit(dof_handler->n_dofs()+dof_handler_sub->n_dofs());
         global_rhs.collect_sizes();
 
 
@@ -465,10 +531,16 @@ namespace mystep60 {
                 TimerOutput::Scope timer_section(monitor, "Assemble Coupling - Mass Matrix");
                 QGauss<dim> quad(parameters.coupling_quadrature_order);
                 NonMatching::create_coupling_mass_matrix(*mesh_tools, *dof_handler, *dof_handler_sub, quad,
-                                                         global_matrix.block(1,0),
+                                                         global_matrix.block(0,1),
                                                          AffineConstraints < double > (), ComponentMask(),
                                                          ComponentMask(),
                                                          *sub_domain_mapping);
+
+
+
+
+
+
             }
             {
                 TimerOutput::Scope timer_section(monitor, "Assemble Coupling - Interpolation");
@@ -482,13 +554,40 @@ namespace mystep60 {
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::combine_small_matrix() {
-        global_matrix.block(1,0).Tmmult(global_matrix.block(0,1),identity_sparse);
+        TimerOutput::Scope timer_section(monitor, "re-Assemble-matrix");
+        std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
+        std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
+        global_matrix.block(0,1).Tmmult(global_matrix.block(1,0),identity_sparse);
 
-        //global_matrix.block(0,1).copy_from(global_matrix.block(1,0));
-        //global_matrix.block(0,0).copy_from(stiffnes_matrix);
-        //global_matrix.block(1,0).copy_from(coupling_matrix);
-        //global_matrix.block(0,1).copy_from(coupling_matrix);
-        //global_matrix.block(1,1).copy_from(coupling_matrix);
+        std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
+        std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
+        std::cout << "global matrix size: " << global_matrix(1,1) << " by : "<< global_matrix(1,2) << std::endl;
+
+        //for (unsigned int i=0 ; i<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++i)
+          //  for (unsigned int j=0 ; j<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++j)
+            //    if(global_matrix.el(i,j)!=0)
+                    //global_sparsity_2.add(i,j);
+
+        //global_sparsity_2.compress();
+
+        //global_matrix_2.reinit(global_sparsity_2);
+
+
+        //for (unsigned int i=0 ; i<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++i)
+          // for (unsigned int j=0 ; j<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++j)
+           //{
+           //if(global_matrix.el(i,j)!=0)
+             //   {
+
+               //     global_matrix_2.set(i,j,global_matrix.el(i,j));
+                 //   }
+           //}
+
+       // for (unsigned int i=0 ; i<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++i)
+         //   {
+           //     global_rhs_2(i)+=global_rhs(i);
+            //}
+
 
     }
 
@@ -502,8 +601,10 @@ namespace mystep60 {
         SparseDirectUMFPACK K_inv_umfpack;
         K_inv_umfpack.initialize(global_matrix.block(0,0));
         auto K = linear_operator(global_matrix.block(0,0));
-        auto Ct = linear_operator(global_matrix.block(1,0));
-        auto C = linear_operator(global_matrix.block(0,1));
+        auto Ct = linear_operator(global_matrix.block(0,1));
+        auto C = linear_operator(global_matrix.block(1,0));
+
+
         auto K_inv = linear_operator(K, K_inv_umfpack);
 
 
@@ -525,11 +626,38 @@ namespace mystep60 {
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::solve_direct() {
 
-        SolverControl solver_control(1000, 1e-12);
+        SolverControl solver_control(10000, 1e-12);
         SolverCG<BlockVector<double>>    solver(solver_control);
-        //PreconditionSSOR<> preconditioner;
-        //preconditioner.initialize(global_matrix, 1.2);
-        solver.solve(global_matrix, global_solution, global_rhs, PreconditionIdentity());
+        PreconditionJacobi<BlockSparseMatrix<double>> preconditioner;
+        preconditioner.initialize(global_matrix, 1.2);
+
+        std::cout << "global matrix size: " << global_matrix.block(0,0).m() << " by : "<< global_matrix.block(0,0).n() << std::endl;
+        std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
+        std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
+        std::cout << "global matrix size: " << global_matrix.block(1,1).m() << " by : "<< global_matrix.block(1,1).n() << std::endl;
+        unsigned int k=0;
+        while (global_matrix.block(1,1).residual(residual_value,global_solution.block(1),global_rhs.block(1)) > double(1.e-12)| k<100) {
+            solver.solve(global_matrix, global_solution, global_rhs, preconditioner);
+
+            std::cout << "residual: " << global_matrix.block(1, 1).residual(residual_value, global_solution.block(1),global_rhs.block(1)) << std::endl;
+            k += 1;
+
+            for (unsigned int i = 0; i < dof_handler_sub->n_dofs(); ++i) {
+                if (i == 0)
+                    global_matrix.block(1,1).set(i, i + 1, -global_solution.block(1)(i) / global_solution.block(1)(i + 1));
+                else if (i == dof_handler_sub->n_dofs() - 1)
+                    global_matrix.block(1,1).set(i, i, -global_solution.block(1)(i - 1) / global_solution.block(1)(i));
+                else
+                    global_matrix.block(1,1).set(i, i + 1, -(global_solution.block(1)(i - 1) + global_solution.block(1)(i))/global_solution.block(1)(i + 1));
+
+                }
+        }
+
+            //for (unsigned int i=0 ; i<(dof_handler->n_dofs());++i)
+            //{
+            //global_solution.block(0)(i)+=global_solution_2(i);
+            //}
+
         constraints.distribute(global_solution.block(0));
     }
 
@@ -568,7 +696,7 @@ namespace mystep60 {
 
 
 
-        for (unsigned int cycle=0 ; cycle<3 ; ++cycle) {
+        for (unsigned int cycle=0 ; cycle<1 ; ++cycle) {
             if (cycle==0)
             setup_grid();
             else
