@@ -379,14 +379,14 @@ namespace mystep60 {
 
 
 
-        //DynamicSparsityPattern dsp_fill(dof_handler_sub->n_dofs(),dof_handler_sub->n_dofs());
-        //define the sparcity block
+
+        //define the sparsity block
         global_sparsity.block(0,0).copy_from(stiffness_sparsity);
         global_sparsity.block(1,0).copy_from(coupling_sparsity);
         global_sparsity.block(0,1).copy_from(coupling_sparsity);
 
 
-        // difine the sparsity pattern
+        // difine the sparsity pattern d'une matrice tridiagonal ( objectif , symetrics et M*lambda=0)
         global_sparsity_2.reinit(dof_handler_sub->n_dofs(),dof_handler_sub->n_dofs(),3);
 
         for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
@@ -409,9 +409,9 @@ namespace mystep60 {
 
         global_sparsity.block(1,1).copy_from(global_sparsity_2);
 
-
+        //Initialisation de la matrice de depart qui sera iterrer par la suite
         global_matrix.reinit(global_sparsity);
-        double relative_size=1;
+        double relative_size=0.00001;
         for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
             if (i == 0) {
                 global_matrix.block(1,1).set(i, i, 2*relative_size);
@@ -427,13 +427,15 @@ namespace mystep60 {
         }
 
 
-
+        //initialisation des block de solution, rhs, vecteur pour l'evaluation des residue
         global_solution.reinit(2);
         global_solution.block(0).reinit(dof_handler->n_dofs());
         global_solution.block(1).reinit(dof_handler_sub->n_dofs());
         global_solution.collect_sizes();
+
         global_solution_2.reinit(dof_handler->n_dofs()+dof_handler_sub->n_dofs());
         residual_value.reinit(dof_handler_sub->n_dofs());
+
         global_rhs.reinit(2);
         global_rhs.block(0).reinit(dof_handler->n_dofs());
         global_rhs.block(1).reinit(dof_handler_sub->n_dofs());
@@ -545,6 +547,8 @@ namespace mystep60 {
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::combine_small_matrix() {
+
+        //print info de la matrice et implemente la matrice transpose  Ct a partir de C
         TimerOutput::Scope timer_section(monitor, "re-Assemble-matrix");
         std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
@@ -563,7 +567,7 @@ namespace mystep60 {
     void DistributedLagrangeProblem<dim, spacedim>::solve() {
         //solve the probleme
         TimerOutput::Scope timer_section(monitor, "Solve");
-        // developpe the inverse of the the stiffness matrix
+        // develope the inverse of the the stiffness matrix
 
         SparseDirectUMFPACK K_inv_umfpack;
         K_inv_umfpack.initialize(global_matrix.block(0,0));
@@ -592,8 +596,9 @@ namespace mystep60 {
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::solve_direct() {
+        // setup of the solver
         TimerOutput::Scope timer_section(monitor, "Solve");
-        SolverControl solver_control(100000, 1e-12);
+        SolverControl solver_control(10000, 1e-12);
         SolverCG<BlockVector<double>>    solver(solver_control);
         PreconditionJacobi<BlockSparseMatrix<double>> preconditioner;
 
@@ -602,7 +607,9 @@ namespace mystep60 {
         std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(1,1).m() << " by : "<< global_matrix.block(1,1).n() << std::endl;
-        double convergencefactor=0.01;
+        // difine the basic step size for the convergence of sub matrix that replace the matrix 0
+        double convergencefactor=0.001;
+        // iteration of the matrix  and resolution of the problem
         unsigned int k=0;
         while (global_matrix.block(1,1).residual(residual_value,global_solution.block(1),global_rhs.block(1)) > double(1.e-12) & k<100) {
             preconditioner.initialize(global_matrix);
@@ -613,7 +620,7 @@ namespace mystep60 {
             std::cout << "lambda " << global_solution.block(1)(1) << std::endl;
             std::cout << "g max error" << residual_value.linfty_norm()<< std::endl;
             k += 1;
-
+            // redefinition of the sub matrix  M ( raplce 0 ) from the results of the last iteration to have M*lambda=0
             for (unsigned int i = 0; i < dof_handler_sub->n_dofs(); ++i) {
                 if (i == 0) {
                     double b = (1 - convergencefactor) * global_matrix.block(1, 1)(i, i + 1) -
@@ -696,8 +703,8 @@ namespace mystep60 {
             setup_block_matrix();
             define_probleme();
             combine_small_matrix();
-            solve();
-            //solve_direct();
+            //solve();
+            solve_direct();
 
         }
         output();
