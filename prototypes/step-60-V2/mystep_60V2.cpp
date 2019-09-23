@@ -175,16 +175,13 @@ namespace mystep60 {
         SparseMatrix<double> stiffnes_matrix;
         SparseMatrix<double> coupling_matrix;
         BlockSparseMatrix<double> global_matrix;
-        SparseMatrix<double> global_matrix_2;
-        SparseMatrix<double> complement_stiffnes_matrix;
+
 
 
         SparsityPattern identity_sparsity;
         IdentityMatrix identity_matrix;
         SparseMatrix<double> identity_sparse;
-        SparsityPattern identity_sparsity_2;
-        IdentityMatrix identity_matrix_2;
-        SparseMatrix<double> identity_sparse_2;
+
 
         // make possible to have hanging not and pass boundary condition on it
         AffineConstraints<double> constraints;
@@ -414,7 +411,7 @@ namespace mystep60 {
 
 
         global_matrix.reinit(global_sparsity);
-        double relative_size=1000;
+        double relative_size=1;
         for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
             if (i == 0) {
                 global_matrix.block(1,1).set(i, i, 2*relative_size);
@@ -557,30 +554,6 @@ namespace mystep60 {
         std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix(1,1) << " by : "<< global_matrix(1,2) << std::endl;
 
-        //for (unsigned int i=0 ; i<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++i)
-          //  for (unsigned int j=0 ; j<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++j)
-            //    if(global_matrix.el(i,j)!=0)
-                    //global_sparsity_2.add(i,j);
-
-        //global_sparsity_2.compress();
-
-        //global_matrix_2.reinit(global_sparsity_2);
-
-
-        //for (unsigned int i=0 ; i<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++i)
-          // for (unsigned int j=0 ; j<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++j)
-           //{
-           //if(global_matrix.el(i,j)!=0)
-             //   {
-
-               //     global_matrix_2.set(i,j,global_matrix.el(i,j));
-                 //   }
-           //}
-
-       // for (unsigned int i=0 ; i<(dof_handler_sub->n_dofs()+ dof_handler->n_dofs());++i)
-         //   {
-           //     global_rhs_2(i)+=global_rhs(i);
-            //}
 
 
     }
@@ -619,8 +592,8 @@ namespace mystep60 {
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::solve_direct() {
-
-        SolverControl solver_control(10000, 1e-12);
+        TimerOutput::Scope timer_section(monitor, "Solve");
+        SolverControl solver_control(100000, 1e-12);
         SolverCG<BlockVector<double>>    solver(solver_control);
         PreconditionJacobi<BlockSparseMatrix<double>> preconditioner;
 
@@ -629,34 +602,52 @@ namespace mystep60 {
         std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
         std::cout << "global matrix size: " << global_matrix.block(1,1).m() << " by : "<< global_matrix.block(1,1).n() << std::endl;
+        double convergencefactor=0.01;
         unsigned int k=0;
         while (global_matrix.block(1,1).residual(residual_value,global_solution.block(1),global_rhs.block(1)) > double(1.e-12) & k<100) {
             preconditioner.initialize(global_matrix);
             solver.solve(global_matrix, global_solution, global_rhs, preconditioner);
 
-            std::cout << "residual: " << global_matrix.block(1, 1).residual(residual_value, global_solution.block(1),global_rhs.block(1)) << std::endl;
+            std::cout << "residual: " << global_matrix.block(1, 1).residual(residual_value, global_solution.block(1),
+                                                                            global_rhs.block(1)) << std::endl;
             std::cout << "lambda " << global_solution.block(1)(1) << std::endl;
+            std::cout << "g max error" << residual_value.linfty_norm()<< std::endl;
             k += 1;
 
             for (unsigned int i = 0; i < dof_handler_sub->n_dofs(); ++i) {
-                if (i == 0)
-                    global_matrix.block(1,1).set(i, i + 1, -global_solution.block(1)(i) / global_solution.block(1)(i + 1));
+                if (i == 0) {
+                    double b = (1 - convergencefactor) * global_matrix.block(1, 1)(i, i + 1) -
+                               convergencefactor * global_solution.block(1)(i) * global_matrix.block(1, 1)(i, i) /
+                               global_solution.block(1)(i + 1);
+                    global_matrix.block(1, 1).set(i, i + 1, b);
+
+                    }
                 else if (i == dof_handler_sub->n_dofs() - 1) {
+
                     global_matrix.block(1, 1).set(i, i - 1, global_matrix.block(1, 1)(i - 1, i));
-                    global_matrix.block(1, 1).set(i, i, -global_solution.block(1)(i - 1) *global_matrix.block(1, 1)(i,i-1)/ global_solution.block(1)(i));
-                }
+                    double b = (1 - convergencefactor) * global_matrix.block(1, 1)(i, i - 1) -
+                               convergencefactor * global_solution.block(1)(i - 1) *
+                               global_matrix.block(1, 1)(i, i - 1) / global_solution.block(1)(i);
+                    global_matrix.block(1, 1).set(i, i, b);
+
+                    }
                 else {
                     global_matrix.block(1, 1).set(i, i - 1, global_matrix.block(1, 1)(i - 1, i));
-                    global_matrix.block(1, 1).set(i, i + 1,
-                                                  -(global_solution.block(1)(i - 1)*global_matrix.block(1, 1)(i,i-1) + global_solution.block(1)(i)*global_matrix.block(1, 1)(i,i)) /
-                                                  global_solution.block(1)(i + 1));
+                    double avant=global_matrix.block(1, 1)(i, i + 1);
+
+                    double b = (1 - convergencefactor) * global_matrix.block(1, 1)(i, i + 1) - convergencefactor *(global_solution.block(1)(i - 1) *global_matrix.block(1,1)(i, i - 1) +global_solution.block(1)(i) *global_matrix.block(1,1)(i, i)) /global_solution.block(1)(i + 1);
+                    global_matrix.block(1, 1).set(i, i + 1, b);
+                    double apres=global_matrix.block(1, 1)(i, i + 1);
+                    //std::cout << "diff" <<avant-apres << std::endl;
+
                 }
-                }
+
+            }
+
         }
-
-
         constraints.distribute(global_solution.block(0));
-    }
+
+}
 
     template<int dim, int spacedim>
     void DistributedLagrangeProblem<dim, spacedim>::output() {
@@ -693,7 +684,7 @@ namespace mystep60 {
 
 
 
-        for (unsigned int cycle=0 ; cycle<3 ; ++cycle) {
+        for (unsigned int cycle=0 ; cycle<3; ++cycle) {
             if (cycle==0)
             setup_grid();
             else
@@ -705,7 +696,8 @@ namespace mystep60 {
             setup_block_matrix();
             define_probleme();
             combine_small_matrix();
-            solve_direct();
+            solve();
+            //solve_direct();
 
         }
         output();
