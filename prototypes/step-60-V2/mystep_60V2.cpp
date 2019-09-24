@@ -738,7 +738,7 @@ namespace mystep60 {
         direct.vmult(global_solution,global_rhs);
         std::cout << "solution " << try_solution(0)<< " "<< try_solution(1) << std::endl;
 
-       // constraints.distribute(global_solution.block(0));
+        constraints.distribute(global_solution.block(0));
 
 
     }
@@ -871,8 +871,8 @@ namespace mystep60 {
             setup_block_matrix();
             define_probleme();
             combine_small_matrix();
-            solve();
-            //solve_direct_vrai();
+            //solve();
+            solve_direct_vrai();
             //solve_direct();
             //solve_iteratif_direct()
 
