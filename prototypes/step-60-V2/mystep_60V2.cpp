@@ -77,9 +77,9 @@ namespace mystep60 {
             // define the number of time that the code is gonna refine the first mesh
             unsigned int initial_refinement=4;
             // define the number of refinement that is applied on the part of the base mesh and the sub domain where the condtions are imposed
-            unsigned int delta_refinement=0;
+            unsigned int delta_refinement=3;
             // number of refinement of the grid that make the subdomaine
-            unsigned int initial_embedded_grid_refinement=8;
+            unsigned int initial_embedded_grid_refinement=12;
             // we are working on a unit square for this exemple so we need to define which boundary as dirichlet =0
             std::list<types::boundary_id> homogeneous_dirichlet_ids{0, 1, 2, 3};
             // finite element degree on the ebedded domain
@@ -246,7 +246,7 @@ namespace mystep60 {
         // define the function and value of the expression of the sub domain
         configuration_function.declare_parameters_call_back.connect([]() -> void {
             ParameterAcceptor::prm.set("Function constants", "R=.3, Cx=.4, Cy=.4");
-            ParameterAcceptor::prm.set("Function expression", "R*cos(2*pi*x)+Cx; R*sin(2*pi*x)+Cy");
+            ParameterAcceptor::prm.set("Function expression", "R*cos(2*pi*x)+Cx; R*sin(2*pi*x)+Cy" );
         });
         // Define the sub domain value function to a csontant
         sub_domain_value_function.declare_parameters_call_back.connect([]() -> void {
@@ -407,6 +407,11 @@ namespace mystep60 {
         // difine the sparsity pattern d'une matrice tridiagonal ( objectif , symetrics et M*lambda=0)
         global_sparsity_2.reinit(dof_handler_sub->n_dofs(),dof_handler_sub->n_dofs(),3);
 
+        global_sparsity.block(1,1).copy_from(dsp_identity);
+        global_matrix_2.reinit(global_sparsity);
+
+
+
         for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
             if (i == 0) {
                 global_sparsity_2.add(0, i);
@@ -429,9 +434,9 @@ namespace mystep60 {
 
         global_matrix.reinit(global_sparsity);
 
-        global_matrix_2.reinit(global_sparsity);
+
         //Initialisation de la matrice de depart qui sera iterrer par la suite
-        /*global_matrix.block(0,0).reinit(global_sparsity.block(0,0));
+        global_matrix.block(0,0).reinit(global_sparsity.block(0,0));
         global_matrix.block(0,1).reinit(global_sparsity.block(0,1));
         global_matrix.block(1,1).reinit(global_sparsity.block(1,1));
         double relative_size=0;
@@ -448,7 +453,6 @@ namespace mystep60 {
                 global_matrix.block(1,1).set(i, i + 1, -relative_size);
             }
         }
-*/
         std::cout << "block 0 0: " << global_matrix.block(0,0).m() << " by : "<< global_matrix.block(0,0).n() << std::endl;
         std::cout << "block 0 1: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
         std::cout << "block 1 0: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
@@ -646,7 +650,9 @@ namespace mystep60 {
 
         //IterationNumberControl iteration_number_control_aS(30, 1.e-11);
         //SolverCG<>             solver_aS(iteration_number_control_aS);
-        //const auto preconditioner_S = inverse_operator(S,solver_aS, PreconditionIdentity());
+        //Precondition preconditioner_S ;
+        //preconditioner_S.initialize(S);
+
         SolverCG<Vector<double>> solver_cg(schur_solver_control);
         auto S_inv = inverse_operator(S, solver_cg,PreconditionIdentity());
         global_solution.block(1) = S_inv * global_rhs.block(1);
@@ -734,7 +740,7 @@ namespace mystep60 {
          //   global_rhs(i)=1;
 
         SparseDirectUMFPACK direct;
-        direct.initialize(global_matrix_2);
+        direct.initialize(global_matrix);
         direct.vmult(global_solution,global_rhs);
         std::cout << "solution " << try_solution(0)<< " "<< try_solution(1) << std::endl;
 
@@ -762,13 +768,11 @@ namespace mystep60 {
     void DistributedLagrangeProblem<dim, spacedim>::solve_direct() {
         // setup of the solver
 
-
-
-
         TimerOutput::Scope timer_section(monitor, "Solve");
-        SolverControl solver_control(10000, 1e-12);
+        SolverControl solver_control(100000, 1e-12);
         SolverCG<BlockVector<double>>    solver(solver_control);
         PreconditionJacobi<BlockSparseMatrix<double>> preconditioner;
+        SparseDirectUMFPACK direct;
 
 
         std::cout << "global matrix size: " << global_matrix.block(0,0).m() << " by : "<< global_matrix.block(0,0).n() << std::endl;
@@ -779,9 +783,12 @@ namespace mystep60 {
         double convergencefactor=0.1;
         // iteration of the matrix  and resolution of the problem
         unsigned int k=0;
-        while (global_matrix.block(1,1).residual(residual_value,global_solution.block(1),global_rhs.block(1)) > double(1.e-12) & k<10) {
-            preconditioner.initialize(global_matrix);
-            solver.solve(global_matrix, global_solution, global_rhs, preconditioner);
+        while (global_matrix.block(1,1).residual(residual_value,global_solution.block(1),global_rhs.block(1)) > double(1.e-12) & k<100) {
+            //preconditioner.initialize(global_matrix);
+            //solver.solve(global_matrix, global_solution, global_rhs, preconditioner);
+            direct.initialize(global_matrix);
+            direct.vmult(global_solution,global_rhs);
+
 
             std::cout << "residual: " << global_matrix.block(1, 1).residual(residual_value, global_solution.block(1),
                                                                             global_rhs.block(1)) << std::endl;
