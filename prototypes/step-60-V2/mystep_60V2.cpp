@@ -431,10 +431,10 @@ namespace mystep60 {
 
         global_matrix_2.reinit(global_sparsity);
         //Initialisation de la matrice de depart qui sera iterrer par la suite
-        global_matrix.block(0,0).reinit(global_sparsity.block(0,0));
+        /*global_matrix.block(0,0).reinit(global_sparsity.block(0,0));
         global_matrix.block(0,1).reinit(global_sparsity.block(0,1));
         global_matrix.block(1,1).reinit(global_sparsity.block(1,1));
-        double relative_size=1;
+        double relative_size=0;
         for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
             if (i == 0) {
                 global_matrix.block(1,1).set(i, i, 2*relative_size);
@@ -448,7 +448,7 @@ namespace mystep60 {
                 global_matrix.block(1,1).set(i, i + 1, -relative_size);
             }
         }
-
+*/
         std::cout << "block 0 0: " << global_matrix.block(0,0).m() << " by : "<< global_matrix.block(0,0).n() << std::endl;
         std::cout << "block 0 1: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
         std::cout << "block 1 0: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
@@ -663,6 +663,9 @@ namespace mystep60 {
         BlockVector<double> try_rhs;
         BlockVector<double> try_solution;
 
+
+
+
         try_sparsity.reinit(2,2);
         DynamicSparsityPattern dsp(2,2);
         dsp.add(0,0);
@@ -727,12 +730,12 @@ namespace mystep60 {
 
 
         // develope the inverse of the the stiffness matrix
-        for (unsigned int i=0 ; i<dof_handler->n_dofs();++i)
-            global_rhs(i)=1;
+        //for (unsigned int i=0 ; i<dof_handler->n_dofs();++i)
+         //   global_rhs(i)=1;
 
         SparseDirectUMFPACK direct;
-        direct.initialize(try_matrix);
-        direct.vmult(try_rhs,try_solution);
+        direct.initialize(global_matrix_2);
+        direct.vmult(global_solution,global_rhs);
         std::cout << "solution " << try_solution(0)<< " "<< try_solution(1) << std::endl;
 
        // constraints.distribute(global_solution.block(0));
@@ -868,8 +871,8 @@ namespace mystep60 {
             setup_block_matrix();
             define_probleme();
             combine_small_matrix();
-            //solve();
-            solve_direct_vrai();
+            solve();
+            //solve_direct_vrai();
             //solve_direct();
             //solve_iteratif_direct()
 
