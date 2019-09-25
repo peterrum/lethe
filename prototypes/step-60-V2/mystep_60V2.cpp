@@ -133,7 +133,7 @@ namespace mystep60 {
         void solve_direct();
         void solve_iteratif_direct();
         void solve_direct_vrai();
-        void output();
+        void output(unsigned int iter);
 
         //define global variables of the domain
 
@@ -180,9 +180,6 @@ namespace mystep60 {
         SparseMatrix<double> stiffnes_matrix;
         SparseMatrix<double> coupling_matrix;
         BlockSparseMatrix<double> global_matrix;
-//        BlockSparseMatrix<double> global_matrix_2;
-
-
 
         SparsityPattern identity_sparsity;
         IdentityMatrix identity_matrix;
@@ -201,8 +198,6 @@ namespace mystep60 {
         Vector<double> sub_domain_value;
         BlockVector<double> global_solution;
         BlockVector<double> global_rhs;
-//        Vector<double> global_solution_2;
-//        Vector<double> global_rhs_2;
         // provide stats of the resolution
         TimerOutput monitor;
 
@@ -241,7 +236,7 @@ namespace mystep60 {
     DistributedLagrangeProblem<dim, spacedim>::DistributedLagrangeProblem(const Parameters &parameters)
             : parameters(parameters), configuration_function("Embedded configuration", spacedim),
               sub_domain_value_function("Embedded value"), schur_solver_control("Schur solver control"),
-              monitor(std::cout, TimerOutput::summary, TimerOutput::cpu_and_wall_times) {
+              monitor(std::cout, TimerOutput::summary, TimerOutput::wall_times) {
         //default value for the parameter Acceptor class created from parameter acceptor proxy
 
         // define the function and value of the expression of the sub domain
@@ -440,29 +435,6 @@ namespace mystep60 {
 
         global_matrix.reinit(global_sparsity);
 
-        //Initialisation de la matrice de depart qui sera iterrer par la suite
-        global_matrix.block(0,0).reinit(global_sparsity.block(0,0));
-        global_matrix.block(0,1).reinit(global_sparsity.block(0,1));
-        global_matrix.block(1,1).reinit(global_sparsity.block(1,1));
-        double relative_size=0;
-        for (unsigned int i=0 ; i<dof_handler_sub->n_dofs() ; ++i) {
-            if (i == 0) {
-                global_matrix.block(1,1).set(i, i, 2*relative_size);
-                global_matrix.block(1,1).set(i, i + 1, -relative_size);
-            } else if (i == dof_handler_sub->n_dofs() - 1) {
-                global_matrix.block(1,1).set(i, i, relative_size);
-                global_matrix.block(1,1).set(i, i - 1, -relative_size);
-            } else {
-                global_matrix.block(1,1).set(i, i, 2*relative_size);
-                global_matrix.block(1,1).set(i, i - 1, -relative_size);
-                global_matrix.block(1,1).set(i, i + 1, -relative_size);
-            }
-        }
-        std::cout << "block 0 0: " << global_matrix.block(0,0).m() << " by : "<< global_matrix.block(0,0).n() << std::endl;
-        std::cout << "block 0 1: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
-        std::cout << "block 1 0: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
-        std::cout << "block 1 1: " << global_matrix.block(1,1).m() << " by : "<< global_matrix.block(1,1).n() << std::endl;
-
         //initialisation des block de solution, rhs, vecteur pour l'evaluation des residue
         global_solution.reinit(2);
         global_solution.block(0).reinit(dof_handler->n_dofs());
@@ -476,10 +448,6 @@ namespace mystep60 {
         global_rhs.block(0).reinit(dof_handler->n_dofs());
         global_rhs.block(1).reinit(dof_handler_sub->n_dofs());
         global_rhs.collect_sizes();
-//        global_rhs_2.reinit(dof_handler->n_dofs()+dof_handler_sub->n_dofs());
-//        global_rhs.collect_sizes();
-
-
     }
 
     template<int dim, int spacedim>
@@ -603,44 +571,19 @@ namespace mystep60 {
 
         //print info de la matrice et implemente la matrice transpose  Ct a partir de C
         TimerOutput::Scope timer_section(monitor, "re-Assemble-matrix");
-        std::cout << "global matrix size: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
-        std::cout << "global matrix size: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
-
-        //unsigned int k=0;
-
-
-
 
         for(unsigned int i=0 ; i< global_matrix.block(0,1).m();++i) {
             for (unsigned int j=0; j < global_matrix.block(0, 1).n(); ++j) {
-                //k+=1;
-                //std::cout << global_matrix.block(0, 1).el(i, j) << " iteration "<< k << std::endl;
                 if (global_matrix.block(0, 1).el(i, j) != 0) {
                     global_matrix.block(1, 0).set(j, i, global_matrix.block(0, 1).el(i, j));
-                    //std::cout << global_matrix.block(0, 1).el(i, j) << std::endl;
                 }
             }
         }
-
-        unsigned int i=0;
-        //for (unsigned int j=0; j < global_matrix.block(0, 1).n(); ++j)
-        //  {
-        //     {
-        //      global_matrix.block(1, 0).set(i, j, 0.);
-        //    }
-        //}
-//global_matrix.block(1, 1).set(i, i, 1.);
 
         std::cout << "block 0 0: " << global_matrix.block(0,0).m() << " by : "<< global_matrix.block(0,0).n() << std::endl;
         std::cout << "block 0 1: " << global_matrix.block(0,1).m() << " by : "<< global_matrix.block(0,1).n() << std::endl;
         std::cout << "block 1 0: " << global_matrix.block(1,0).m() << " by : "<< global_matrix.block(1,0).n() << std::endl;
         std::cout << "block 1 1: " << global_matrix.block(1,1).m() << " by : "<< global_matrix.block(1,1).n() << std::endl;
-        //std::cout << "global matrix size: " << global_matrix(1,1) << " by : "<< global_matrix(1,2) << std::endl;
-//        global_matrix_2.block(0,0).copy_from(global_matrix.block(0, 0));
-//        global_matrix_2.block(0,1).copy_from(global_matrix.block(0, 1));
-//        global_matrix_2.block(1,0).copy_from(global_matrix.block(1, 0));
-
-
 
     }
 
@@ -689,11 +632,6 @@ namespace mystep60 {
 
         FEValuesExtractors::Scalar lambda(0);
 
-
-        //DoFTools::extract_boundary_dofs(dof_handler_sub, fe_sub->component_mask(lambda), boundary_dofs);
-        //const unsigned int first_boundary_dof = std::distance(boundary_dofs.begin(),std::find (boundary_dofs.begin(), boundary_dofs.end(), true));
-
-
         SparseDirectUMFPACK direct;
 //        std::cout << "Global solution" << std::endl;
 //        std::cout << "*************" << std::endl;
@@ -719,12 +657,7 @@ namespace mystep60 {
 
         direct.initialize(global_matrix);
         direct.vmult(global_solution,global_rhs);
-//        direct.vmult(global_rhs,global_solution);
-//        std::cout << "solution " << try_solution(0)<< " "<< try_solution(1) << std::endl;
-
         constraints.distribute(global_solution.block(0));
-
-
     }
 
 
@@ -812,12 +745,12 @@ namespace mystep60 {
 }
 
     template<int dim, int spacedim>
-    void DistributedLagrangeProblem<dim, spacedim>::output() {
+    void DistributedLagrangeProblem<dim, spacedim>::output(unsigned int iter) {
 
         TimerOutput::Scope timer_section(monitor, "Output results");
         DataOut<spacedim> embedding_out;
 
-        std::ofstream embedding_out_file("embedding.vtu");
+        std::ofstream embedding_out_file("embedding"+Utilities::int_to_string(iter, 4)+".vtu");
         // ouput domain results
         embedding_out.attach_dof_handler(*dof_handler);
         embedding_out.add_data_vector(global_solution.block(0), "solution");
@@ -826,7 +759,7 @@ namespace mystep60 {
 
         // output subdomain results
         DataOut<dim, DoFHandler<dim, spacedim>> embedded_out;
-        std::ofstream embedded_out_file("embedded.vtu");
+        std::ofstream embedded_out_file("embedded"+Utilities::int_to_string(iter, 4)+".vtu");
         embedded_out.attach_dof_handler(*dof_handler_sub);
         embedded_out.add_data_vector(global_solution.block(1), "lambda");
         embedded_out.add_data_vector(sub_domain_value, "g");
@@ -844,9 +777,7 @@ namespace mystep60 {
         AssertThrow(parameters.initialized, ExcNotInitialized());
         deallog.depth_console(parameters.verbosity_lvl);
 
-
-
-        for (unsigned int cycle=0 ; cycle<3; ++cycle) {
+        for (unsigned int cycle=0 ; cycle<4; ++cycle) {
             if (cycle==0)
             setup_grid();
             else
@@ -862,9 +793,10 @@ namespace mystep60 {
             solve_direct_vrai();
             //solve_direct();
             //solve_iteratif_direct()
-
+            output(cycle);
+            monitor.print_summary();
+            monitor.reset();
         }
-        output();
     }
 }
 
