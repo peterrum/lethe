@@ -116,6 +116,9 @@ namespace mystep60 {
 
         void local_refine();
 
+        void local_refine_immersed();
+
+
         void setup_matrix();
 
         void setup_block_matrix();
@@ -267,7 +270,34 @@ namespace mystep60 {
 
         GridRefinement::refine_and_coarsen_fixed_number(*mesh,estimated_error_per_cell,0.3,0.03);
         mesh->execute_coarsening_and_refinement();
+
+
         setup_matrix();
+
+    }
+
+    template<int dim, int spacedim>
+    void DistributedLagrangeProblem<dim, spacedim>::local_refine_immersed()
+    {
+      //define the support point of the sub domain so we can refine arrond it in a later operation
+      std::vector<Point<spacedim>> support_point(dof_handler_sub->n_dofs());
+      if (parameters.delta_refinement != 0)
+        DoFTools::map_dofs_to_support_points(*sub_domain_mapping, *dof_handler_sub, support_point);
+
+      // set flag for refinement arrond the points that support the sub domain and there neigboring cell
+      const auto point_locations = GridTools::compute_point_locations(*mesh_tools, support_point);
+      const auto &cells = std::get<0>(point_locations);
+      for (auto &cell : cells) {
+          cell->set_refine_flag();
+          for (unsigned int face_no = 0; face_no < GeometryInfo<spacedim>::faces_per_cell; ++face_no)
+            if (!cell->at_boundary(face_no)) {
+                auto neighbor = cell->neighbor(face_no);
+                neighbor->set_refine_flag();
+              }
+
+        }
+      mesh->execute_coarsening_and_refinement();
+      setup_matrix();
 
     }
 
@@ -346,13 +376,13 @@ namespace mystep60 {
                 << embedded_space_maximal_diameter /
                    embedding_space_minimal_diameter
                 << std::endl;
-        AssertThrow(embedded_space_maximal_diameter <
-                    embedding_space_minimal_diameter,
-                    ExcMessage(
-                            "The embedding grid is too refined (or the embedded grid "
-                            "is too coarse). Adjust the parameters so that the minimal "
-                            "grid size of the embedding grid is larger "
-                            "than the maximal grid size of the embedded grid."));
+//        AssertThrow(embedded_space_maximal_diameter <
+//                    embedding_space_minimal_diameter,
+//                    ExcMessage(
+//                            "The embedding grid is too refined (or the embedded grid "
+//                            "is too coarse). Adjust the parameters so that the minimal "
+//                            "grid size of the embedding grid is larger "
+//                            "than the maximal grid size of the embedded grid."));
 
         //setup the global mesh from there
         setup_matrix();
@@ -777,11 +807,12 @@ namespace mystep60 {
         AssertThrow(parameters.initialized, ExcNotInitialized());
         deallog.depth_console(parameters.verbosity_lvl);
 
-        for (unsigned int cycle=0 ; cycle<4; ++cycle) {
+        for (unsigned int cycle=0 ; cycle<2; ++cycle) {
             if (cycle==0)
             setup_grid();
             else
-            local_refine();
+              local_refine();
+//            local_refine_immersed();
 
             std::cout << "number of active cells:" << mesh->n_active_cells() << std::endl;
 
