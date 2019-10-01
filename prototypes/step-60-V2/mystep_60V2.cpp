@@ -79,7 +79,7 @@ namespace mystep60 {
             // define the number of refinement that is applied on the part of the base mesh and the sub domain where the condtions are imposed
             unsigned int delta_refinement=3;
             // number of refinement of the grid that make the subdomaine
-            unsigned int initial_embedded_grid_refinement=12;
+            unsigned int initial_embedded_grid_refinement=8;
             // we are working on a unit square for this exemple so we need to define which boundary as dirichlet =0
             std::list<types::boundary_id> homogeneous_dirichlet_ids{0, 1, 2, 3};
             // finite element degree on the ebedded domain
@@ -281,8 +281,7 @@ namespace mystep60 {
     {
       //define the support point of the sub domain so we can refine arrond it in a later operation
       std::vector<Point<spacedim>> support_point(dof_handler_sub->n_dofs());
-      if (parameters.delta_refinement != 0)
-        DoFTools::map_dofs_to_support_points(*sub_domain_mapping, *dof_handler_sub, support_point);
+      DoFTools::map_dofs_to_support_points(*sub_domain_mapping, *dof_handler_sub, support_point);
 
       // set flag for refinement arrond the points that support the sub domain and there neigboring cell
       const auto point_locations = GridTools::compute_point_locations(*mesh_tools, support_point);
@@ -297,6 +296,7 @@ namespace mystep60 {
 
         }
       mesh->execute_coarsening_and_refinement();
+
       setup_matrix();
 
     }
@@ -811,8 +811,8 @@ namespace mystep60 {
             if (cycle==0)
             setup_grid();
             else
-              local_refine();
-//            local_refine_immersed();
+//              local_refine();
+            local_refine_immersed();
 
             std::cout << "number of active cells:" << mesh->n_active_cells() << std::endl;
 
