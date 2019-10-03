@@ -118,6 +118,7 @@ namespace mystep60 {
 
         void local_refine_immersed();
 
+        void local_refine_edge();
 
         void setup_matrix();
 
@@ -264,15 +265,18 @@ namespace mystep60 {
     void DistributedLagrangeProblem<dim, spacedim>::local_refine()
     {
         Vector<float> estimated_error_per_cell(mesh->n_active_cells());
+        Vector<float> estimated_error_per_cell_2(mesh_sub->n_active_cells());
 
         KellyErrorEstimator<spacedim>::estimate(*dof_handler,QGauss<spacedim-1>(fe->degree+1),
                                            std::map<types::boundary_id,const Function <spacedim> *>(),global_solution.block(0),estimated_error_per_cell);
 
+
         GridRefinement::refine_and_coarsen_fixed_number(*mesh,estimated_error_per_cell,0.3,0.03);
+
+        local_refine_immersed();
         mesh->execute_coarsening_and_refinement();
-
-
         setup_matrix();
+        local_refine_edge();
 
     }
 
@@ -287,18 +291,79 @@ namespace mystep60 {
       const auto point_locations = GridTools::compute_point_locations(*mesh_tools, support_point);
       const auto &cells = std::get<0>(point_locations);
       for (auto &cell : cells) {
-          cell->set_refine_flag();
+
+          if (cell->refine_flag_set()==false ){
+              std::cout << cell->refine_flag_set()<< std::endl;
+              cell->set_refine_flag();
+          }
           for (unsigned int face_no = 0; face_no < GeometryInfo<spacedim>::faces_per_cell; ++face_no)
             if (!cell->at_boundary(face_no)) {
                 auto neighbor = cell->neighbor(face_no);
+                if( neighbor->refine_flag_set()==false)
                 neighbor->set_refine_flag();
               }
 
         }
-      mesh->execute_coarsening_and_refinement();
 
-      setup_matrix();
 
+      //mesh->execute_coarsening_and_refinement();
+
+      //setup_matrix();
+
+    }
+    template<int dim, int spacedim>
+    void DistributedLagrangeProblem<dim, spacedim>::local_refine_edge()
+    {
+
+        double embedded_space_maximal_diameter =
+                GridTools::maximal_cell_diameter(*mesh_sub, *sub_domain_mapping);
+        double embedding_space_minimal_diameter =
+                GridTools::minimal_cell_diameter(*mesh);
+        deallog << "Embedding minimal diameter: "
+                << embedding_space_minimal_diameter
+                << ", embedded maximal diameter: "
+                << embedded_space_maximal_diameter << ", ratio: "
+                << embedded_space_maximal_diameter /
+                   embedding_space_minimal_diameter
+                << std::endl;
+
+        //double ratio= (embedded_space_maximal_diameter/embedding_space_minimal_diameter);
+        while (embedded_space_maximal_diameter/embedding_space_minimal_diameter>1.5) {
+
+
+            mesh_sub->refine_global(1);
+            setup_matrix_sub();
+            configuration_FE = std::make_unique<FESystem<dim, spacedim>>(
+                    FE_Q<dim, spacedim>(parameters.embedded_fe_deg), spacedim);
+            configuration_dof_handler = std::make_unique<DoFHandler<dim, spacedim>>(*mesh_sub);
+            configuration_dof_handler->distribute_dofs(*configuration_FE);
+            configuration.reinit(configuration_dof_handler->n_dofs());
+
+            // interpolate the configuration and deformation of the domain
+            VectorTools::interpolate(*configuration_dof_handler, configuration_function, configuration);
+
+            //mapping the deformation of the sub domain to the subdomain
+            if (parameters.use_displacement == true)
+                sub_domain_mapping = std_cxx14::make_unique<MappingQEulerian<dim, Vector<double>, spacedim>>(
+                        parameters.deformation_fe_deg, *configuration_dof_handler, configuration
+                );
+            else
+                sub_domain_mapping = std_cxx14::make_unique<MappingFEField<dim, spacedim, Vector<double>, DoFHandler<
+                        dim, spacedim>>>(*configuration_dof_handler, configuration);
+
+            embedded_space_maximal_diameter =
+                    GridTools::maximal_cell_diameter(*mesh_sub, *sub_domain_mapping);
+            embedding_space_minimal_diameter =
+                    GridTools::minimal_cell_diameter(*mesh);
+            deallog << " New Embedding minimal diameter: "
+                    << embedding_space_minimal_diameter
+                    << ", New embedded maximal diameter: "
+                    << embedded_space_maximal_diameter << ", New ratio: "
+                    << embedded_space_maximal_diameter /
+                       embedding_space_minimal_diameter
+                    << std::endl;
+            //ratio = (embedded_space_maximal_diameter/embedding_space_minimal_diameter);
+        }
     }
 
 // setting up the mesh for the system
@@ -311,15 +376,15 @@ namespace mystep60 {
         GridGenerator::hyper_cube(*mesh, 0, 1, true);
         // refine it according to the parameters
         mesh->refine_global(parameters.initial_refinement);
-        mesh_tools = std_cxx14::make_unique<GridTools::Cache<spacedim, spacedim>>(*mesh);
+        mesh_tools = std::make_unique<GridTools::Cache<spacedim, spacedim>>(*mesh);
 
         // generate mesh of subdomain
-        mesh_sub = std_cxx14::make_unique<Triangulation<dim, spacedim>>();
+        mesh_sub = std::make_unique<Triangulation<dim, spacedim>>();
         GridGenerator::hyper_cube(*mesh_sub);
         mesh_sub->refine_global(parameters.initial_embedded_grid_refinement);
 
         // generate the finite element sub domain information
-        configuration_FE = std_cxx14::make_unique<FESystem<dim, spacedim>>(
+        configuration_FE = std::make_unique<FESystem<dim, spacedim>>(
                 FE_Q<dim, spacedim>(parameters.embedded_fe_deg), spacedim);
         configuration_dof_handler = std_cxx14::make_unique<DoFHandler<dim, spacedim>>(*mesh_sub);
         configuration_dof_handler->distribute_dofs(*configuration_FE);
@@ -376,6 +441,9 @@ namespace mystep60 {
                 << embedded_space_maximal_diameter /
                    embedding_space_minimal_diameter
                 << std::endl;
+
+
+        local_refine_edge();
 //        AssertThrow(embedded_space_maximal_diameter <
 //                    embedding_space_minimal_diameter,
 //                    ExcMessage(
@@ -807,14 +875,18 @@ namespace mystep60 {
         AssertThrow(parameters.initialized, ExcNotInitialized());
         deallog.depth_console(parameters.verbosity_lvl);
 
-        for (unsigned int cycle=0 ; cycle<2; ++cycle) {
+        for (unsigned int cycle=0 ; cycle<5; ++cycle) {
             if (cycle==0)
-            setup_grid();
+                setup_grid();
             else
-//              local_refine();
-            local_refine_immersed();
+                local_refine();
+
+            //local_refine_immersed();
+            //local_refine_edge();
+
 
             std::cout << "number of active cells:" << mesh->n_active_cells() << std::endl;
+            std::cout << "number of active cells:" << mesh_sub->n_active_cells() << std::endl;
 
             coulpling_system();
             setup_block_matrix();
