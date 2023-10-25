@@ -124,7 +124,7 @@ NavierStokesOperatorBase<dim, number>::reinit(
 
   this->simulation_control = simulation_control;
 
-  // this->compute_element_size();
+  this->compute_element_size();
 
   constrained_indices.clear();
   for (auto i : this->matrix_free.get_constrained_dofs())
@@ -589,7 +589,7 @@ NavierStokesSUPGPSPGOperator<dim, number>::do_cell_integral_local(
 
   const unsigned int cell = integrator.get_current_cell_index();
 
-  // auto h = integrator.read_cell_data(this->get_element_size());
+  const auto h = integrator.read_cell_data(this->get_element_size());
 
   for (unsigned int q = 0; q < integrator.n_q_points; ++q)
     {
@@ -619,42 +619,14 @@ NavierStokesSUPGPSPGOperator<dim, number>::do_cell_integral_local(
         this->nonlinear_previous_hessian_diagonal(cell, q);
 
       // Calculate tau
-      VectorizedArray<number> u_mag = VectorizedArray<number>(1e-12);
-      VectorizedArray<number> tau   = VectorizedArray<number>(0.0);
-
-      std::array<number, VectorizedArray<number>::size()> h_k;
-      std::array<number, VectorizedArray<number>::size()> h;
-
-      for (auto lane = 0u;
-           lane < this->matrix_free.n_active_entries_per_cell_batch(cell);
-           lane++)
-        {
-          h_k[lane] =
-            this->matrix_free.get_cell_iterator(cell, lane)->measure();
-        }
-
-      for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-        {
-          if (dim == 2)
-            {
-              h[v] = std::sqrt(4. * h_k[v] / M_PI) / this->fe_degree;
-            }
-          else if (dim == 3)
-            {
-              h[v] = std::pow(6 * h_k[v] / M_PI, 1. / 3.) / this->fe_degree;
-            }
-        }
-
+      VectorizedArray<number> u_mag = 1e-12;
       for (unsigned int k = 0; k < dim; ++k)
         u_mag += Utilities::fixed_power<2>(previous_values[k]);
 
-      for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-        {
-          tau[v] = 1. / std::sqrt(
-                          4. * u_mag[v] / h[v] / h[v] +
-                          9 * Utilities::fixed_power<2>(
-                                4 * this->kinematic_viscosity / (h[v] * h[v])));
-        }
+      const auto tau =
+        1. / std::sqrt(4. * u_mag / h / h +
+                       9. * Utilities::fixed_power<2>(
+                              4. * this->kinematic_viscosity / (h * h)));
 
       // Weak form Jacobian
       for (unsigned int i = 0; i < dim; ++i)
@@ -770,7 +742,7 @@ NavierStokesSUPGPSPGOperator<dim, number>::local_evaluate_residual(
       integrator.evaluate(EvaluationFlags::values | EvaluationFlags::gradients |
                           EvaluationFlags::hessians);
 
-      // auto h = integrator.read_cell_data(this->get_element_size());
+      const auto h = integrator.read_cell_data(this->get_element_size());
 
       for (unsigned int q = 0; q < integrator.n_q_points; ++q)
         {
@@ -790,42 +762,15 @@ NavierStokesSUPGPSPGOperator<dim, number>::local_evaluate_residual(
             integrator.get_hessian_diagonal(q);
 
           // Calculate tau
-          VectorizedArray<number> u_mag = VectorizedArray<number>(1e-12);
-          VectorizedArray<number> tau   = VectorizedArray<number>(0.0);
-
-          std::array<number, VectorizedArray<number>::size()> h_k;
-          std::array<number, VectorizedArray<number>::size()> h;
-
-          for (auto lane = 0u;
-               lane < matrix_free.n_active_entries_per_cell_batch(cell);
-               lane++)
-            {
-              h_k[lane] = matrix_free.get_cell_iterator(cell, lane)->measure();
-            }
-
-          for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-            {
-              if (dim == 2)
-                {
-                  h[v] = std::sqrt(4. * h_k[v] / M_PI) / this->fe_degree;
-                }
-              else if (dim == 3)
-                {
-                  h[v] = std::pow(6 * h_k[v] / M_PI, 1. / 3.) / this->fe_degree;
-                }
-            }
-
+          VectorizedArray<number> u_mag = 1e-12;
           for (unsigned int k = 0; k < dim; ++k)
             u_mag += Utilities::fixed_power<2>(value[k]);
 
-          for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-            {
-              tau[v] =
-                1. /
-                std::sqrt(4. * u_mag[v] / h[v] / h[v] +
-                          9 * Utilities::fixed_power<2>(
-                                4 * this->kinematic_viscosity / (h[v] * h[v])));
-            }
+          const auto tau =
+            1. / std::sqrt(4. * u_mag / h / h +
+                           9. * Utilities::fixed_power<2>(
+                                  4. * this->kinematic_viscosity / (h * h)));
+
           // Result value/gradient we will use
           typename FECellIntegrator::value_type    value_result;
           typename FECellIntegrator::gradient_type gradient_result;
@@ -928,7 +873,7 @@ NavierStokesTransientSUPGPSPGOperator<dim, number>::do_cell_integral_local(
 
   const unsigned int cell = integrator.get_current_cell_index();
 
-  // auto h = integrator.read_cell_data(this->get_element_size());
+  const auto h = integrator.read_cell_data(this->get_element_size());
 
   // Time stepping information
   const auto          method = this->simulation_control->get_assembly_method();
@@ -971,43 +916,14 @@ NavierStokesTransientSUPGPSPGOperator<dim, number>::do_cell_integral_local(
         this->time_derivatives_previous_solutions(cell, q);
 
       // Calculate tau
-      VectorizedArray<number> u_mag = VectorizedArray<number>(1e-12);
-      VectorizedArray<number> tau   = VectorizedArray<number>(0.0);
-
-      std::array<number, VectorizedArray<number>::size()> h_k;
-      std::array<number, VectorizedArray<number>::size()> h;
-
-      for (auto lane = 0u;
-           lane < this->matrix_free.n_active_entries_per_cell_batch(cell);
-           lane++)
-        {
-          h_k[lane] =
-            this->matrix_free.get_cell_iterator(cell, lane)->measure();
-        }
-
-      for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-        {
-          if (dim == 2)
-            {
-              h[v] = std::sqrt(4. * h_k[v] / M_PI) / this->fe_degree;
-            }
-          else if (dim == 3)
-            {
-              h[v] = std::pow(6 * h_k[v] / M_PI, 1. / 3.) / this->fe_degree;
-            }
-        }
-
+      VectorizedArray<number> u_mag = 1e-12;
       for (unsigned int k = 0; k < dim; ++k)
         u_mag += Utilities::fixed_power<2>(previous_values[k]);
 
-      for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-        {
-          tau[v] = 1. / std::sqrt(
-                          Utilities::fixed_power<2>(sdt) +
-                          4. * u_mag[v] / h[v] / h[v] +
-                          9 * Utilities::fixed_power<2>(
-                                4 * this->kinematic_viscosity / (h[v] * h[v])));
-        }
+      const auto tau =
+        1. / std::sqrt(Utilities::fixed_power<2>(sdt) + 4. * u_mag / h / h +
+                       9. * Utilities::fixed_power<2>(
+                              4. * this->kinematic_viscosity / (h * h)));
 
       // Weak form Jacobian
       for (unsigned int i = 0; i < dim; ++i)
@@ -1135,7 +1051,7 @@ NavierStokesTransientSUPGPSPGOperator<dim, number>::local_evaluate_residual(
       integrator.evaluate(EvaluationFlags::values | EvaluationFlags::gradients |
                           EvaluationFlags::hessians);
 
-      // auto h = integrator.read_cell_data(this->get_element_size());
+      const auto h = integrator.read_cell_data(this->get_element_size());
 
       // Time stepping information
       const auto method = this->simulation_control->get_assembly_method();
@@ -1167,43 +1083,15 @@ NavierStokesTransientSUPGPSPGOperator<dim, number>::local_evaluate_residual(
             this->time_derivatives_previous_solutions(cell, q);
 
           // Calculate tau
-          VectorizedArray<number> u_mag = VectorizedArray<number>(1e-12);
-          VectorizedArray<number> tau   = VectorizedArray<number>(0.0);
-
-          std::array<number, VectorizedArray<number>::size()> h_k;
-          std::array<number, VectorizedArray<number>::size()> h;
-
-          for (auto lane = 0u;
-               lane < matrix_free.n_active_entries_per_cell_batch(cell);
-               lane++)
-            {
-              h_k[lane] = matrix_free.get_cell_iterator(cell, lane)->measure();
-            }
-
-          for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-            {
-              if (dim == 2)
-                {
-                  h[v] = std::sqrt(4. * h_k[v] / M_PI) / this->fe_degree;
-                }
-              else if (dim == 3)
-                {
-                  h[v] = std::pow(6 * h_k[v] / M_PI, 1. / 3.) / this->fe_degree;
-                }
-            }
-
+          VectorizedArray<number> u_mag = 1e-12;
           for (unsigned int k = 0; k < dim; ++k)
             u_mag += Utilities::fixed_power<2>(value[k]);
 
-          for (unsigned int v = 0; v < VectorizedArray<number>::size(); ++v)
-            {
-              tau[v] =
-                1. /
-                std::sqrt(Utilities::fixed_power<2>(sdt) +
-                          4. * u_mag[v] / h[v] / h[v] +
-                          9 * Utilities::fixed_power<2>(
-                                4 * this->kinematic_viscosity / (h[v] * h[v])));
-            }
+          const auto tau =
+            1. / std::sqrt(Utilities::fixed_power<2>(sdt) + 4. * u_mag / h / h +
+                           9. * Utilities::fixed_power<2>(
+                                  4. * this->kinematic_viscosity / (h * h)));
+
           // Result value/gradient we will use
           typename FECellIntegrator::value_type    value_result;
           typename FECellIntegrator::gradient_type gradient_result;
