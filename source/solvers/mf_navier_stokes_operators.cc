@@ -334,13 +334,23 @@ NavierStokesOperatorBase<dim, number>::vmult_interface_down(
   VectorType       &dst,
   VectorType const &src) const
 {
+  if (has_edge_constrained_indices == false)
+    {
+      dst = number(0.);
+      return;
+    }
+
+
   this->matrix_free.cell_loop(
     &NavierStokesOperatorBase::do_cell_integral_range, this, dst, src, true);
 
-  // set constrained dofs as the sum of current dst value and src value
-  for (unsigned int i = 0; i < constrained_indices.size(); ++i)
-    dst.local_element(constrained_indices[i]) =
-      src.local_element(constrained_indices[i]);
+  // make a copy of dst and zero out everything except edge_constraints
+  VectorType dst_copy(dst);
+  dst = 0.0;
+
+  for (unsigned int i = 0; i < edge_constrained_indices.size(); ++i)
+    dst.local_element(edge_constrained_indices[i]) =
+      dst_copy.local_element(edge_constrained_indices[i]);
 }
 
 template <int dim, typename number>

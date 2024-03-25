@@ -470,8 +470,6 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
   MGLevelObject<AffineConstraints<double>>     level_constraints;
   MGConstrainedDoFs                            mg_constrained_dofs;
   MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<OperatorType>>
-    ls_mg_operators;
-  MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<OperatorType>>
     ls_mg_interface_in;
   MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<OperatorType>>
     ls_mg_interface_out;
@@ -491,7 +489,6 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
   level_constraints.resize(0, n_h_levels - 1);
   ls_mg_interface_in.resize(0, n_h_levels - 1);
   ls_mg_interface_out.resize(0, n_h_levels - 1);
-  ls_mg_operators.resize(0, n_h_levels - 1);
 
   // Fill the constraints
   this->mg_computing_timer.enter_subsection("Set boundary conditions");
@@ -613,7 +610,6 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
       mg_operators[level]->initialize_dof_vector(
         mg_time_derivative_previous_solutions[level]);
 
-      ls_mg_operators[level].initialize(*mg_operators[level]);
       ls_mg_interface_in[level].initialize(*mg_operators[level]);
       ls_mg_interface_out[level].initialize(*mg_operators[level]);
 
@@ -654,7 +650,7 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
   this->mg_computing_timer.leave_subsection(
     "Create transfer operator and execute relevant transfers");
 
-  mg::Matrix<VectorType> mg_matrix(ls_mg_operators);
+  mg::Matrix<VectorType> mg_matrix(mg_operators);
 
   // Create smoother, fill parameters for each level and intialize it
   this->mg_computing_timer.enter_subsection("Set up and initialize smoother");
