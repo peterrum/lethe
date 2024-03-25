@@ -473,8 +473,6 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
     ls_mg_operators;
   MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<OperatorType>>
     ls_mg_interface_in;
-  MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<OperatorType>>
-    ls_mg_interface_out;
   std::vector<std::shared_ptr<const Utilities::MPI::Partitioner>> partitioners(
     this->dof_handler.get_triangulation().n_global_levels());
 
@@ -490,7 +488,6 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
   mg_time_derivative_previous_solutions.resize(0, n_h_levels - 1);
   level_constraints.resize(0, n_h_levels - 1);
   ls_mg_interface_in.resize(0, n_h_levels - 1);
-  ls_mg_interface_out.resize(0, n_h_levels - 1);
   ls_mg_operators.resize(0, n_h_levels - 1);
 
   // Fill the constraints
@@ -615,7 +612,6 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
 
       ls_mg_operators[level].initialize(*mg_operators[level]);
       ls_mg_interface_in[level].initialize(*mg_operators[level]);
-      ls_mg_interface_out[level].initialize(*mg_operators[level]);
 
       partitioners[level] = mg_operators[level]->get_vector_partitioner();
 
@@ -927,14 +923,13 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
   // Create interface matrices needed for local smoothing in case of local
   // refinement
   mg::Matrix<VectorType> mg_interface_matrix_in(ls_mg_interface_in);
-  mg::Matrix<VectorType> mg_interface_matrix_out(ls_mg_interface_out);
 
   // Create main MG object
   Multigrid<VectorType> mg(
     mg_matrix, *mg_coarse, mg_transfer, mg_smoother, mg_smoother, minlevel);
 
   if (this->dof_handler.get_triangulation().has_hanging_nodes())
-    mg.set_edge_matrices(mg_interface_matrix_in, mg_interface_matrix_out);
+    mg.set_edge_in_matrix(mg_interface_matrix_in);
 
   // Create MG preconditioner
   ls_multigrid_preconditioner =
