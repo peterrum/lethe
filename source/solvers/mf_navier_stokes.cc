@@ -763,9 +763,22 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
     this->simulation_parameters.linear_solver.at(PhysicsID::fluid_dynamics)
       .mg_level_min_cells;
 
+  std::vector<unsigned int> n_cells_on_levels(
+    this->dof_handler.get_triangulation().n_global_levels(), 0);
+
+  for (unsigned int l = 0; l < this->dof_handler.get_triangulation().n_levels();
+       ++l)
+    for (const auto &cell :
+         this->dof_handler.get_triangulation().cell_iterators_on_level(l))
+      if (cell->is_locally_owned_on_level())
+        n_cells_on_levels[l]++;
+
+  Utilities::MPI::sum(n_cells_on_levels,
+                      this->dof_handler.get_communicator(),
+                      n_cells_on_levels);
+
   AssertThrow(
-    mg_level_min_cells <=
-      static_cast<int>(this->dof_handler.get_triangulation().n_cells(maxlevel)),
+    mg_level_min_cells <= static_cast<int>(n_cells_on_levels[maxlevel]),
     ExcMessage(
       "The mg level min cells specified are larger than the cells of the finest mg level."));
 
@@ -776,8 +789,7 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
   if (mg_level_min_cells != -1)
     {
       for (unsigned int level = minlevel; level <= maxlevel; ++level)
-        if (static_cast<int>(this->dof_handler.get_triangulation().n_cells(
-              level)) >= mg_level_min_cells)
+        if (static_cast<int>(n_cells_on_levels[level]) >= mg_level_min_cells)
           {
             minlevel = level;
             break;
@@ -792,8 +804,7 @@ MFNavierStokesSolver<dim>::solve_with_LSMG(SolverGMRES<VectorType> &solver)
       for (unsigned int level = minlevel; level <= maxlevel; ++level)
         this->pcout << "    Level " << level - minlevel << ": "
                     << this->dof_handler.n_dofs(level) << " DoFs, "
-                    << this->dof_handler.get_triangulation().n_cells(level)
-                    << " cells" << std::endl;
+                    << n_cells_on_levels[level] << " cells" << std::endl;
       this->pcout << std::endl;
     }
 
