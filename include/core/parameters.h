@@ -1161,7 +1161,8 @@ namespace Parameters
       dealii,
       periodic_hills,
       cylinder,
-      colorized_cylinder_shell
+      colorized_cylinder_shell,
+      turek
     };
     Type type;
 

@@ -2042,7 +2042,7 @@ namespace Parameters
         "type",
         "dealii",
         Patterns::Selection(
-          "gmsh|dealii|periodic_hills|cylinder|colorized_cylinder_shell"),
+          "gmsh|dealii|periodic_hills|cylinder|colorized_cylinder_shell|turek"),
         "Type of mesh "
         "Choices are <gmsh|dealii|periodic_hills|cylinder|colorized_cylinder_shell>.");
 
@@ -2148,6 +2148,8 @@ namespace Parameters
           type = Type::dealii;
         else if (op == "periodic_hills")
           type = Type::periodic_hills;
+        else if (op == "turek")
+          type = Type::turek;
         else if (op == "cylinder")
           type = Type::cylinder;
         else if (op == "colorized_cylinder_shell")
