@@ -2518,6 +2518,11 @@ namespace Parameters
           Patterns::Bool(),
           "use elements with linear interpolation for coarse grid");
 
+        prm.declare_entry("mg coarse grid use pmg",
+                          "false",
+                          Patterns::Bool(),
+                          "use p-multigrid for coarse grid");
+
         prm.declare_entry("mg gmres max iterations",
                           "2000",
                           Patterns::Integer(),
@@ -2673,6 +2678,14 @@ namespace Parameters
             "Error, invalid coarse grid solver type. Choices are gmres, amg, ilu or direct.");
 
         mg_use_fe_q_iso_q1 = prm.get_bool("mg coarse grid use fe q iso q1");
+        mg_use_pmg         = prm.get_bool("mg coarse grid use pmg");
+
+        AssertThrow((!mg_use_fe_q_iso_q1) || (!mg_use_pmg),
+                    ExcNotImplemented());
+
+        AssertThrow((preconditioner != PreconditionerType::lsmg) ||
+                      (!mg_use_pmg),
+                    ExcNotImplemented());
 
         mg_gmres_max_iterations = prm.get_integer("mg gmres max iterations");
         mg_gmres_tolerance      = prm.get_double("mg gmres tolerance");
