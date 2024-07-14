@@ -604,19 +604,21 @@ MFNavierStokesPreconditionGMG<dim>::MFNavierStokesPreconditionGMG(
       this->coarse_grid_triangulations = temp;
 
       // p-multigrid
-      const bool use_pmg =
+      const auto mg_coarsening_type =
         this->simulation_parameters.linear_solver.at(PhysicsID::fluid_dynamics)
-          .mg_use_pmg;
+          .mg_coarsening_type;
 
       const auto polynomial_coarsening_sequence =
         MGTransferGlobalCoarseningTools::create_polynomial_coarsening_sequence(
           this->dof_handler.get_fe().degree,
-          MGTransferGlobalCoarseningTools::PolynomialCoarseningSequenceType::
-            decrease_by_one /*TODO: add parameter*/);
+          this->simulation_parameters.linear_solver
+            .at(PhysicsID::fluid_dynamics)
+            .mg_p_coarsening_type);
 
       std::vector<std::pair<unsigned int, unsigned int>> levels;
 
-      if (use_pmg) // hp-multigrid
+      if (mg_coarsening_type ==
+          Parameters::LinearSolver::MultigridCoarseningSequenceType::hp)
         {
           // p
           for (const auto i : polynomial_coarsening_sequence)
@@ -627,7 +629,8 @@ MFNavierStokesPreconditionGMG<dim>::MFNavierStokesPreconditionGMG(
                ++i)
             levels.emplace_back(i, polynomial_coarsening_sequence.back());
         }
-      else if (false /*TODO: add parameter*/) // ph-multigrid
+      else if (mg_coarsening_type ==
+               Parameters::LinearSolver::MultigridCoarseningSequenceType::ph)
         {
           // h
           for (unsigned int i = 0;
@@ -639,18 +642,24 @@ MFNavierStokesPreconditionGMG<dim>::MFNavierStokesPreconditionGMG(
           for (const auto i : polynomial_coarsening_sequence)
             levels.emplace_back(this->coarse_grid_triangulations.size() - 1, i);
         }
-      else if (false /*TODO: add parameter*/) // p-multigrid
+      else if (mg_coarsening_type ==
+               Parameters::LinearSolver::MultigridCoarseningSequenceType::p)
         {
           // p
           for (const auto i : polynomial_coarsening_sequence)
             levels.emplace_back(this->coarse_grid_triangulations.size() - 1, i);
         }
-      else // h-multigrid
+      else if (mg_coarsening_type ==
+               Parameters::LinearSolver::MultigridCoarseningSequenceType::h)
         {
           // h
           for (unsigned int i = 0; i < this->coarse_grid_triangulations.size();
                ++i)
             levels.emplace_back(i, polynomial_coarsening_sequence.back());
+        }
+      else
+        {
+          AssertThrow(false, ExcNotImplemented());
         }
 
       // Define maximum and minimum level according to triangulations
@@ -684,7 +693,10 @@ MFNavierStokesPreconditionGMG<dim>::MFNavierStokesPreconditionGMG(
                 .mg_use_fe_q_iso_q1 &&
               l == this->minlevel)
             {
-              AssertThrow(use_pmg == false, ExcNotImplemented());
+              AssertThrow(
+                mg_coarsening_type ==
+                  Parameters::LinearSolver::MultigridCoarseningSequenceType::h,
+                ExcNotImplemented());
 
               const auto points =
                 QGaussLobatto<1>(this->dof_handler.get_fe().degree + 1)
@@ -865,7 +877,10 @@ MFNavierStokesPreconditionGMG<dim>::MFNavierStokesPreconditionGMG(
                 .mg_use_fe_q_iso_q1 &&
               level == this->minlevel)
             {
-              AssertThrow(use_pmg == false, ExcNotImplemented());
+              AssertThrow(
+                mg_coarsening_type ==
+                  Parameters::LinearSolver::MultigridCoarseningSequenceType::h,
+                ExcNotImplemented());
 
               const auto points =
                 QGaussLobatto<1>(this->dof_handler.get_fe().degree + 1)
