@@ -23,6 +23,7 @@
 
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_gmres.h>
+#include <deal.II/lac/solver_richardson.h>
 
 #include <deal.II/multigrid/mg_coarse.h>
 #include <deal.II/multigrid/mg_constrained_dofs.h>
@@ -144,6 +145,9 @@ private:
   /// Max level of the multigrid hierarchy
   unsigned int maxlevel;
 
+  /// Min level of the multigrid hierarchy (TODO)
+  unsigned int intlevel;
+
   /// Triangulations for the global coarsening case
   std::vector<std::shared_ptr<const Triangulation<dim>>>
     coarse_grid_triangulations;
@@ -202,6 +206,22 @@ private:
 
   /// Multigrid wrapper for the coarse grid solver
   std::shared_ptr<MGCoarseGridBase<VectorType>> mg_coarse;
+
+  /// Solver control for the coarse grid solver (TODO)
+  std::shared_ptr<SolverControl> coarse_grid_solver_control_intermediate;
+
+  /// Multigrid wrapper for the coarse grid solver (TODO)
+  std::shared_ptr<MGCoarseGridBase<VectorType>> mg_coarse_intermediate;
+
+  /// GMRES as coarse grid solver (TODO)
+  std::shared_ptr<SolverGMRES<VectorType>> coarse_grid_solver_intermediate;
+
+  /// Multigrid method (TODO)
+  std::shared_ptr<Multigrid<VectorType>> mg_intermediate;
+
+  /// Global coarsening multigrid preconiditoner object (TODO)
+  std::shared_ptr<PreconditionMG<dim, VectorType, GCTransferType>>
+    gc_multigrid_preconditioner_intermediate;
 
   /// Multigrid method
   std::shared_ptr<Multigrid<VectorType>> mg;
