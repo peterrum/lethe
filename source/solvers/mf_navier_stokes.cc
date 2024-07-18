@@ -554,6 +554,10 @@ MFNavierStokesPreconditionGMG<dim>::MFNavierStokesPreconditionGMG(
         this->simulation_parameters.linear_solver.at(PhysicsID::fluid_dynamics)
           .mg_min_level;
 
+      int mg_int_level =
+        this->simulation_parameters.linear_solver.at(PhysicsID::fluid_dynamics)
+          .mg_int_level;
+
       AssertThrow(
         (mg_min_level + 1) <=
           static_cast<int>(this->coarse_grid_triangulations.size()),
@@ -664,7 +668,7 @@ MFNavierStokesPreconditionGMG<dim>::MFNavierStokesPreconditionGMG(
 
       // Define maximum and minimum level according to triangulations
       this->minlevel = 0;
-      this->intlevel = 2;
+      this->intlevel = (mg_int_level == -1) ? this->minlevel : mg_int_level;
       this->maxlevel = levels.size() - 1;
 
       // Local object for constraints of the different levels
