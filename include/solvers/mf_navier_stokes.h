@@ -37,7 +37,7 @@
 
 using namespace dealii;
 
-template <typename Number, int dim, int spacedim>
+template <typename VectorType>
 class PreconditionASM;
 
 /**
@@ -52,7 +52,7 @@ class MFNavierStokesPreconditionGMG
   using GCTransferType = MGTransferGlobalCoarsening<dim, VectorType>;
   using OperatorType   = NavierStokesOperatorBase<dim, double>;
   // using SmootherPreconditionerType = DiagonalMatrix<VectorType>;
-  using SmootherPreconditionerType = PreconditionASM<double, dim, dim>;
+  using SmootherPreconditionerType = PreconditionASM<VectorType>;
   using SmootherType =
     PreconditionRelaxation<OperatorType, SmootherPreconditionerType>;
   using PreconditionerTypeLS = PreconditionMG<dim, VectorType, LSTransferType>;
