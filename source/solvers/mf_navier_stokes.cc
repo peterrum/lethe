@@ -72,7 +72,9 @@ public:
              const GlobalSparseMatrixType &global_sparse_matrix,
              const GlobalSparsityPattern  &global_sparsity_pattern)
   {
-    if (false) // cell-centric
+    const unsigned int version = 0;
+
+    if (version == 0) // cell-centric
       {
         for (const auto &cell : dof_handler.active_cell_iterators())
           {
@@ -85,7 +87,7 @@ public:
             patches.push_back(local_dof_indices);
           }
       }
-    else if (true) // Vanka
+    else if (version == 1) // Vanka
       {
         std::map<types::global_dof_index, std::set<types::global_dof_index>>
           patches;
@@ -107,18 +109,20 @@ public:
             const auto lex_to_hiearchical =
               FETools::lexicographic_to_hierarchic_numbering<dim>(fe_degree);
 
+            const int overlap = 1;
+
             for (int k = 0; k <= fe_degree; ++k)
               for (int j = 0; j <= fe_degree; ++j)
                 for (int i = 0; i <= fe_degree; ++i)
                   {
-                    for (int K = std::max<int>(0, k - 1);
-                         K <= std::min<int>(k + 1, fe_degree);
+                    for (int K = std::max<int>(0, k - overlap);
+                         K <= std::min<int>(k + overlap, fe_degree);
                          ++K)
-                      for (int J = std::max<int>(0, j - 1);
-                           J <= std::min<int>(j + 1, fe_degree);
+                      for (int J = std::max<int>(0, j - overlap);
+                           J <= std::min<int>(j + overlap, fe_degree);
                            ++J)
-                        for (int I = std::max<int>(0, i - 1);
-                             I <= std::min<int>(i + 1, fe_degree);
+                        for (int I = std::max<int>(0, i - overlap);
+                             I <= std::min<int>(i + overlap, fe_degree);
                              ++I)
                           for (unsigned int d = 0; d < dim; ++d)
                             {
@@ -157,7 +161,7 @@ public:
             this->patches.emplace_back(ii);
           }
       }
-    else if (false) // vertices
+    else if (version == 2) // vertices
       {
         std::set<std::vector<types::global_dof_index>> patches;
 
@@ -199,7 +203,7 @@ public:
                   patches.end(),
                   std::back_inserter(this->patches));
       }
-    else if (false) // cell-centric (each component)
+    else if (version == 3) // cell-centric (each component)
       {
         std::set<std::vector<types::global_dof_index>> patches;
 
@@ -234,7 +238,7 @@ public:
                   patches.end(),
                   std::back_inserter(this->patches));
       }
-    else if (false) // digonal + cell-centric (pressure)
+    else if (version == 4) // digonal + cell-centric (pressure)
       {
         std::set<std::vector<types::global_dof_index>> patches;
 
@@ -283,7 +287,7 @@ public:
                   patches.end(),
                   std::back_inserter(this->patches));
       }
-    else if (false) // cell-centric (velocity-pressure)
+    else if (version == 5) // cell-centric (velocity-pressure)
       {
         std::set<std::vector<types::global_dof_index>> patches;
 
@@ -300,20 +304,23 @@ public:
 
             std::vector<types::global_dof_index> indices;
 
-            for (unsigned int i = 0; i < (local_dof_indices.size() / (dim + 1));
-                 ++i)
+            unsigned int c = 0;
+            for (; c < dim; ++c)
               {
-                for (unsigned int c = 0; c < dim; ++c)
+                for (unsigned int i = 0;
+                     i < (local_dof_indices.size() / (dim + 1));
+                     ++i)
                   {
                     const auto index =
                       local_dof_indices[fe.component_to_system_index(c, i)];
                     indices.emplace_back(index);
                   }
               }
+            patches.insert(indices);
 
             indices.clear();
 
-            for (unsigned int c = dim; c < (dim + 1); ++c)
+            for (; c < (dim + 1); ++c)
               {
                 for (unsigned int i = 0;
                      i < (local_dof_indices.size() / (dim + 1));
@@ -330,6 +337,10 @@ public:
         std::copy(patches.begin(),
                   patches.end(),
                   std::back_inserter(this->patches));
+      }
+    else
+      {
+        AssertThrow(false, ExcInternalError());
       }
 
     const unsigned int n_patches =
@@ -348,14 +359,57 @@ public:
     src.reinit(partition);
     dst.reinit(partition);
 
+    if (false)
+      {
+        for (const auto &indices : this->patches)
+          {
+            for (const auto &i : indices)
+              dst[i] += 1.0;
+          }
+        dst.compress(VectorOperation::add);
+
+        for (auto &i : dst)
+          i = 1.0 / i;
+
+        std::cout << dst.linfty_norm() << std::endl;
+      }
+
+    auto time = std::chrono::system_clock::now();
+
+    std::vector<FullMatrix<Number>> blocks;
+
     SparseMatrixTools::restrict_to_full_matrices(global_sparse_matrix,
                                                  global_sparsity_pattern,
                                                  patches,
                                                  blocks);
 
-    for (auto &block : blocks)
-      if (block.m() > 0 && block.n() > 0)
-        block.gauss_jordan();
+    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+      std::cout << "A: "
+                << std::chrono::duration_cast<std::chrono::nanoseconds>(
+                     std::chrono::system_clock::now() - time)
+                       .count() /
+                     1e9
+                << std::endl;
+
+    time = std::chrono::system_clock::now();
+    this->blocks.resize(blocks.size());
+
+    for (unsigned int b = 0; b < blocks.size(); ++b)
+      {
+        this->blocks[b] =
+          LAPACKFullMatrix<double>(blocks[b].m(), blocks[b].n());
+
+        this->blocks[b] = blocks[b];
+        this->blocks[b].compute_lu_factorization();
+      }
+
+    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+      std::cout << "B: "
+                << std::chrono::duration_cast<std::chrono::nanoseconds>(
+                     std::chrono::system_clock::now() - time)
+                       .count() /
+                     1e9
+                << std::endl;
   }
 
   void
@@ -411,7 +465,8 @@ public:
           for (unsigned int i = 0; i < dofs_per_cell; ++i)
             vector_src[i] *= vector_weights[i];
 
-        blocks[c].vmult(vector_dst, vector_src);
+        blocks[c].solve(vector_src);
+        vector_dst = vector_src;
 
         if (weighting_type == WeightingType::symm ||
             weighting_type == WeightingType::left)
@@ -429,7 +484,7 @@ public:
 
 private:
   std::vector<std::vector<types::global_dof_index>> patches;
-  std::vector<FullMatrix<Number>>                   blocks;
+  std::vector<LAPACKFullMatrix<Number>>             blocks;
 
   mutable VectorType  weights;
   const WeightingType weighting_type;
