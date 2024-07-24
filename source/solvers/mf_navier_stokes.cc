@@ -72,7 +72,7 @@ public:
              const GlobalSparseMatrixType &global_sparse_matrix,
              const GlobalSparsityPattern  &global_sparsity_pattern)
   {
-    if (false)
+    if (true) // cell-centric
       {
         patches.resize(dof_handler.get_triangulation().n_active_cells());
 
@@ -86,7 +86,7 @@ public:
             cell->get_dof_indices(local_dof_indices);
           }
       }
-    else
+    else if (false) // vertices
       {
         std::set<std::vector<types::global_dof_index>> patches;
 
@@ -122,6 +122,138 @@ public:
                     patches.insert(indices);
                   }
               }
+          }
+
+        std::copy(patches.begin(),
+                  patches.end(),
+                  std::back_inserter(this->patches));
+      }
+    else if (false) // cell-centric (each component)
+      {
+        std::set<std::vector<types::global_dof_index>> patches;
+
+        for (const auto &cell : dof_handler.active_cell_iterators())
+          {
+            if (cell->is_locally_owned() == false)
+              continue;
+
+            const auto &fe = cell->get_fe();
+
+            std::vector<types::global_dof_index> local_dof_indices(
+              fe.n_dofs_per_cell());
+            cell->get_dof_indices(local_dof_indices);
+
+            for (unsigned int c = 0; c < (dim + 1); ++c)
+              {
+                std::vector<types::global_dof_index> indices;
+
+                for (unsigned int i = 0;
+                     i < (local_dof_indices.size() / (dim + 1));
+                     ++i)
+                  {
+                    const auto index =
+                      local_dof_indices[fe.component_to_system_index(c, i)];
+                    indices.emplace_back(index);
+                  }
+                patches.insert(indices);
+              }
+          }
+
+        std::copy(patches.begin(),
+                  patches.end(),
+                  std::back_inserter(this->patches));
+      }
+    else if (false) // digonal + cell-centric (pressure)
+      {
+        std::set<std::vector<types::global_dof_index>> patches;
+
+        for (const auto &cell : dof_handler.active_cell_iterators())
+          {
+            if (cell->is_locally_owned() == false)
+              continue;
+
+            const auto &fe = cell->get_fe();
+
+            std::vector<types::global_dof_index> local_dof_indices(
+              fe.n_dofs_per_cell());
+            cell->get_dof_indices(local_dof_indices);
+
+            for (unsigned int c = 0; c < dim; ++c)
+              {
+                for (unsigned int i = 0;
+                     i < (local_dof_indices.size() / (dim + 1));
+                     ++i)
+                  {
+                    std::vector<types::global_dof_index> indices;
+                    const auto                           index =
+                      local_dof_indices[fe.component_to_system_index(c, i)];
+                    indices.emplace_back(index);
+                    patches.insert(indices);
+                  }
+              }
+
+            for (unsigned int c = dim; c < (dim + 1); ++c)
+              {
+                std::vector<types::global_dof_index> indices;
+
+                for (unsigned int i = 0;
+                     i < (local_dof_indices.size() / (dim + 1));
+                     ++i)
+                  {
+                    const auto index =
+                      local_dof_indices[fe.component_to_system_index(c, i)];
+                    indices.emplace_back(index);
+                  }
+                patches.insert(indices);
+              }
+          }
+
+        std::copy(patches.begin(),
+                  patches.end(),
+                  std::back_inserter(this->patches));
+      }
+    else if (true) // cell-centric (velocity-pressure)
+      {
+        std::set<std::vector<types::global_dof_index>> patches;
+
+        for (const auto &cell : dof_handler.active_cell_iterators())
+          {
+            if (cell->is_locally_owned() == false)
+              continue;
+
+            const auto &fe = cell->get_fe();
+
+            std::vector<types::global_dof_index> local_dof_indices(
+              fe.n_dofs_per_cell());
+            cell->get_dof_indices(local_dof_indices);
+
+            std::vector<types::global_dof_index> indices;
+
+            for (unsigned int i = 0; i < (local_dof_indices.size() / (dim + 1));
+                 ++i)
+              {
+                for (unsigned int c = 0; c < dim; ++c)
+                  {
+                    const auto index =
+                      local_dof_indices[fe.component_to_system_index(c, i)];
+                    indices.emplace_back(index);
+                  }
+              }
+
+            indices.clear();
+
+            for (unsigned int c = dim; c < (dim + 1); ++c)
+              {
+                for (unsigned int i = 0;
+                     i < (local_dof_indices.size() / (dim + 1));
+                     ++i)
+                  {
+                    const auto index =
+                      local_dof_indices[fe.component_to_system_index(c, i)];
+                    indices.emplace_back(index);
+                  }
+              }
+            patches.insert(indices);
           }
 
         std::copy(patches.begin(),
