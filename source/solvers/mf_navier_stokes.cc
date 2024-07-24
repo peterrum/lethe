@@ -74,16 +74,82 @@ public:
   {
     if (true) // cell-centric
       {
-        patches.resize(dof_handler.get_triangulation().n_active_cells());
-
         for (const auto &cell : dof_handler.active_cell_iterators())
           {
             if (cell->is_locally_owned() == false)
               continue;
 
-            auto &local_dof_indices = patches[cell->active_cell_index()];
-            local_dof_indices.resize(cell->get_fe().n_dofs_per_cell());
+            std::vector<types::global_dof_index> local_dof_indices(
+              cell->get_fe().n_dofs_per_cell());
             cell->get_dof_indices(local_dof_indices);
+            patches.push_back(local_dof_indices);
+          }
+      }
+    else if (false) // Vanka
+      {
+        std::map<types::global_dof_index, std::set<types::global_dof_index>>
+          patches;
+
+
+        for (const auto &cell : dof_handler.active_cell_iterators())
+          {
+            if (cell->is_artificial())
+              continue;
+
+            const auto &fe = cell->get_fe();
+
+            const unsigned int fe_degree = fe.degree;
+
+            std::vector<types::global_dof_index> local_dof_indices(
+              fe.n_dofs_per_cell());
+            cell->get_dof_indices(local_dof_indices);
+
+            const auto lex_to_hiearchical =
+              FETools::lexicographic_to_hierarchic_numbering<dim>(fe_degree);
+
+            for (int k = 0; k <= fe_degree; ++k)
+              for (int j = 0; j <= fe_degree; ++j)
+                for (int i = 0; i <= fe_degree; ++i)
+                  {
+                    unsigned int index =
+                      local_dof_indices[fe.component_to_system_index(
+                        dim,
+                        lex_to_hiearchical[i + j * (fe_degree + 1) +
+                                           k * (fe_degree + 1) *
+                                             (fe_degree + 1)])];
+
+                    if (!dof_handler.locally_owned_dofs().is_element(index))
+                      continue;
+
+                    for (int K = std::max<int>(0, k - 1);
+                         K <= std::min<int>(k + 1, fe_degree);
+                         ++K)
+                      for (int J = std::max<int>(0, j - 1);
+                           J <= std::min<int>(j + 1, fe_degree);
+                           ++J)
+                        for (int I = std::max<int>(0, i - 1);
+                             I <= std::min<int>(i + 1, fe_degree);
+                             ++I)
+                          for (unsigned int d = 0; d < dim; ++d)
+                            patches[index].insert(
+                              local_dof_indices[fe.component_to_system_index(
+                                d,
+                                lex_to_hiearchical[I + J * (fe_degree + 1) +
+                                                   K * (fe_degree + 1) *
+                                                     (fe_degree + 1)])]);
+                  }
+          }
+
+        for (const auto &[j, i] : patches)
+          {
+            std::vector<types::global_dof_index> ii;
+            std::copy(i.begin(), i.end(), std::back_inserter(ii));
+
+            ii.push_back(j);
+
+            std::sort(ii.begin(), ii.end());
+
+            this->patches.emplace_back(ii);
           }
       }
     else if (false) // vertices
@@ -212,7 +278,7 @@ public:
                   patches.end(),
                   std::back_inserter(this->patches));
       }
-    else if (true) // cell-centric (velocity-pressure)
+    else if (false) // cell-centric (velocity-pressure)
       {
         std::set<std::vector<types::global_dof_index>> patches;
 
@@ -261,6 +327,22 @@ public:
                   std::back_inserter(this->patches));
       }
 
+    const unsigned int n_patches =
+      Utilities::MPI::sum(patches.size(), MPI_COMM_WORLD);
+
+    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+      std::cout << "ASM: " << n_patches << std::endl;
+
+    IndexSet ghost_dofs(dof_handler.locally_owned_dofs().size());
+    for (const auto &indices : this->patches)
+      ghost_dofs.add_indices(indices.begin(), indices.end());
+
+    const auto partition = std::make_shared<Utilities::MPI::Partitioner>(
+      dof_handler.locally_owned_dofs(), ghost_dofs, MPI_COMM_WORLD);
+
+    src.reinit(partition);
+    dst.reinit(partition);
+
     SparseMatrixTools::restrict_to_full_matrices(global_sparse_matrix,
                                                  global_sparsity_pattern,
                                                  patches,
@@ -272,9 +354,10 @@ public:
   }
 
   void
-  vmult(VectorType &dst, const VectorType &src) const
+  vmult(VectorType &dst_, const VectorType &src_) const
   {
     dst = 0.0;
+    src.copy_locally_owned_data_from(src_);
     src.update_ghost_values();
 
     Vector<double> vector_src, vector_dst, vector_weights;
@@ -336,6 +419,7 @@ public:
 
     src.zero_out_ghost_values();
     dst.compress(VectorOperation::add);
+    dst_.copy_locally_owned_data_from(dst);
   }
 
 private:
@@ -344,6 +428,9 @@ private:
 
   mutable VectorType  weights;
   const WeightingType weighting_type;
+
+  mutable VectorType dst;
+  mutable VectorType src;
 };
 
 /**
