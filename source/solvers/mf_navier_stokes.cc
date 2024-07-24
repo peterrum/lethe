@@ -72,7 +72,7 @@ public:
              const GlobalSparseMatrixType &global_sparse_matrix,
              const GlobalSparsityPattern  &global_sparsity_pattern)
   {
-    if (true) // cell-centric
+    if (false) // cell-centric
       {
         for (const auto &cell : dof_handler.active_cell_iterators())
           {
@@ -85,7 +85,7 @@ public:
             patches.push_back(local_dof_indices);
           }
       }
-    else if (false) // Vanka
+    else if (true) // Vanka
       {
         std::map<types::global_dof_index, std::set<types::global_dof_index>>
           patches;
@@ -111,16 +111,6 @@ public:
               for (int j = 0; j <= fe_degree; ++j)
                 for (int i = 0; i <= fe_degree; ++i)
                   {
-                    unsigned int index =
-                      local_dof_indices[fe.component_to_system_index(
-                        dim,
-                        lex_to_hiearchical[i + j * (fe_degree + 1) +
-                                           k * (fe_degree + 1) *
-                                             (fe_degree + 1)])];
-
-                    if (!dof_handler.locally_owned_dofs().is_element(index))
-                      continue;
-
                     for (int K = std::max<int>(0, k - 1);
                          K <= std::min<int>(k + 1, fe_degree);
                          ++K)
@@ -131,12 +121,27 @@ public:
                              I <= std::min<int>(i + 1, fe_degree);
                              ++I)
                           for (unsigned int d = 0; d < dim; ++d)
-                            patches[index].insert(
-                              local_dof_indices[fe.component_to_system_index(
-                                d,
-                                lex_to_hiearchical[I + J * (fe_degree + 1) +
-                                                   K * (fe_degree + 1) *
-                                                     (fe_degree + 1)])]);
+                            {
+                              unsigned int index =
+                                local_dof_indices[fe.component_to_system_index(
+                                  d,
+                                  lex_to_hiearchical[i + j * (fe_degree + 1) +
+                                                     k * (fe_degree + 1) *
+                                                       (fe_degree + 1)])];
+
+                              const auto other_index =
+                                local_dof_indices[fe.component_to_system_index(
+                                  dim,
+                                  lex_to_hiearchical[I + J * (fe_degree + 1) +
+                                                     K * (fe_degree + 1) *
+                                                       (fe_degree + 1)])];
+
+                              if (!dof_handler.locally_owned_dofs().is_element(
+                                    other_index))
+                                continue;
+
+                              patches[other_index].insert(index);
+                            }
                   }
           }
 
