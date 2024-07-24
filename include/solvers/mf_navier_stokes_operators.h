@@ -215,6 +215,9 @@ public:
   void
   vmult_interface_up(VectorType &dst, VectorType const &src) const;
 
+  const DynamicSparsityPattern &
+  get_sparsity_pattern() const;
+
   /**
    * @brief Calculate matrix if needed, e.g., by coarse-grid solver when a multigrid
    * algorithm is used.
@@ -371,6 +374,11 @@ protected:
    *
    */
   AffineConstraints<number> constraints;
+
+  /**
+   * TODO
+   */
+  mutable DynamicSparsityPattern dsp;
 
   /**
    * @brief Sparse trilinos matrix used when the matrix of certain level is computed
