@@ -66,11 +66,13 @@ public:
 
   template <int dim,
             typename GlobalSparseMatrixType,
-            typename GlobalSparsityPattern>
+            typename GlobalSparsityPattern,
+            typename Number>
   void
-  initialize(const DoFHandler<dim>        &dof_handler,
-             const GlobalSparseMatrixType &global_sparse_matrix,
-             const GlobalSparsityPattern  &global_sparsity_pattern)
+  initialize(const DoFHandler<dim>           &dof_handler,
+             const GlobalSparseMatrixType    &global_sparse_matrix,
+             const GlobalSparsityPattern     &global_sparsity_pattern,
+             const AffineConstraints<Number> &constraints)
   {
     const unsigned int version = 0;
 
@@ -84,7 +86,15 @@ public:
             std::vector<types::global_dof_index> local_dof_indices(
               cell->get_fe().n_dofs_per_cell());
             cell->get_dof_indices(local_dof_indices);
-            patches.push_back(local_dof_indices);
+
+            std::vector<types::global_dof_index> local_dof_indices_temp;
+
+            for (const auto i : local_dof_indices)
+              if (!constraints.is_constrained(i))
+                local_dof_indices_temp.emplace_back(i);
+
+            if (!local_dof_indices_temp.empty())
+              patches.push_back(local_dof_indices_temp);
           }
       }
     else if (version == 1) // Vanka
@@ -396,10 +406,63 @@ public:
 
     for (unsigned int b = 0; b < blocks.size(); ++b)
       {
+        if (false)
+          if ((b < 10) &&
+              (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0))
+            {
+              blocks[b].print_formatted(
+                std::cout, 6, false, 0, "0", 1, 1e-12, ",");
+
+              // if(b == 1000)
+              //   exit(0);
+              std::cout << std::endl;
+              std::cout << std::endl;
+              std::cout << std::endl;
+              std::cout << std::endl;
+              std::cout << std::endl;
+              std::cout << std::endl;
+              std::cout << std::endl;
+            }
+
         this->blocks[b] =
           LAPACKFullMatrix<double>(blocks[b].m(), blocks[b].n());
 
         this->blocks[b] = blocks[b];
+
+        if (false)
+          {
+            this->blocks[b].compute_eigenvalues();
+
+            std::vector<double> eigenvalues;
+
+            for (unsigned int i = 0; i < this->blocks[b].m(); ++i)
+              eigenvalues.push_back(this->blocks[b].eigenvalue(i).real());
+
+            std::sort(eigenvalues.begin(), eigenvalues.end());
+
+            if (false)
+              {
+                for (const auto i : eigenvalues)
+                  std::cout << i << " ";
+                std::cout << std::endl;
+              }
+
+            unsigned int ev_min = 0;
+
+            // for (;
+            //      (ev_min < eigenvalues.size()) &&
+            //      (std::abs(eigenvalues[ev_min]) < 1e-9);
+            //      ++ev_min)
+            //   {
+            //   }
+
+            printf("%10.2e %10.2e %10.2e \n",
+                   eigenvalues[ev_min],
+                   eigenvalues.back(),
+                   eigenvalues.back() / eigenvalues[ev_min]);
+          }
+
+
         this->blocks[b].compute_lu_factorization();
       }
 
@@ -1498,7 +1561,10 @@ MFNavierStokesPreconditionGMG<dim>::initialize(
               ->get_system_matrix_free()
               .get_dof_handler(),
             matrix,
-            sparsity_pattern);
+            sparsity_pattern,
+            this->mg_operators[level]
+              ->get_system_matrix_free()
+              .get_affine_constraints());
         }
       smoother_data[level].n_iterations =
         this->simulation_parameters.linear_solver.at(PhysicsID::fluid_dynamics)
