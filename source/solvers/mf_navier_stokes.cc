@@ -76,6 +76,19 @@ public:
   {
     const unsigned int version = 0;
 
+    const auto add_indices = [&](const auto &local_dof_indices) {
+      std::vector<types::global_dof_index> local_dof_indices_temp;
+
+      for (const auto i : local_dof_indices)
+        if (!constraints.is_constrained(i))
+          local_dof_indices_temp.emplace_back(i);
+
+      local_dof_indices_temp = local_dof_indices;
+
+      if (!local_dof_indices_temp.empty())
+        patches.push_back(local_dof_indices_temp);
+    };
+
     if (version == 0) // cell-centric
       {
         for (const auto &cell : dof_handler.active_cell_iterators())
@@ -83,18 +96,27 @@ public:
             if (cell->is_locally_owned() == false)
               continue;
 
+            const auto &fe = cell->get_fe();
+
             std::vector<types::global_dof_index> local_dof_indices(
               cell->get_fe().n_dofs_per_cell());
             cell->get_dof_indices(local_dof_indices);
 
             std::vector<types::global_dof_index> local_dof_indices_temp;
 
-            for (const auto i : local_dof_indices)
-              if (!constraints.is_constrained(i))
-                local_dof_indices_temp.emplace_back(i);
+            for (unsigned int c = 0; c < (dim + 1); ++c)
+              {
+                for (unsigned int i = 0;
+                     i < (local_dof_indices.size() / (dim + 1));
+                     ++i)
+                  {
+                    const auto index =
+                      local_dof_indices[fe.component_to_system_index(c, i)];
+                    local_dof_indices_temp.emplace_back(index);
+                  }
+              }
 
-            if (!local_dof_indices_temp.empty())
-              patches.push_back(local_dof_indices_temp);
+            add_indices(local_dof_indices_temp);
           }
       }
     else if (version == 1) // Vanka
@@ -168,7 +190,7 @@ public:
 
             std::sort(ii.begin(), ii.end());
 
-            this->patches.emplace_back(ii);
+            add_indices(ii);
           }
       }
     else if (version == 2) // vertices
@@ -209,9 +231,8 @@ public:
               }
           }
 
-        std::copy(patches.begin(),
-                  patches.end(),
-                  std::back_inserter(this->patches));
+        for (const auto &patch : patches)
+          add_indices(patch);
       }
     else if (version == 3) // cell-centric (each component)
       {
@@ -244,9 +265,8 @@ public:
               }
           }
 
-        std::copy(patches.begin(),
-                  patches.end(),
-                  std::back_inserter(this->patches));
+        for (const auto &patch : patches)
+          add_indices(patch);
       }
     else if (version == 4) // digonal + cell-centric (pressure)
       {
@@ -429,6 +449,16 @@ public:
 
         this->blocks[b] = blocks[b];
 
+        const unsigned int nc = dim + 1;
+        const unsigned int n  = blocks[b].n() / nc;
+
+        for (unsigned int ic = 0; ic < nc; ++ic)
+          for (unsigned int jc = 0; jc < nc; ++jc)
+            if (!((ic == jc) || (ic == dim) || (jc == dim)))
+              for (unsigned int i = 0; i < n; ++i)
+                for (unsigned int j = 0; j < n; ++j)
+                  this->blocks[b].set(ic * n + i, jc * n + j, 0.0);
+
         if (false)
           {
             this->blocks[b].compute_eigenvalues();
@@ -543,6 +573,11 @@ public:
     src.zero_out_ghost_values();
     dst.compress(VectorOperation::add);
     dst_.copy_locally_owned_data_from(dst);
+
+    // const double norm = dst_.l2_norm();
+    //
+    // if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+    // std::cout << norm << std::endl;
   }
 
 private:
