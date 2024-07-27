@@ -1235,14 +1235,22 @@ MFNavierStokesPreconditionGMG<dim>::initialize(
 
   for (unsigned int level = this->minlevel; level <= this->maxlevel; ++level)
     {
-      VectorType diagonal_vector;
-      if (false)
+      if (this->simulation_parameters.linear_solver
+            .at(PhysicsID::fluid_dynamics)
+            .mg_smoother_preconditioner_type ==
+          Parameters::LinearSolver::MultigridSmootherPreconditionerType::
+            InverseDiagonal)
         {
+          VectorType diagonal_vector;
           this->mg_operators[level]->compute_inverse_diagonal(diagonal_vector);
           smoother_data[level].preconditioner =
             std::make_shared<MyDiagonalMatrix<VectorType>>(diagonal_vector);
         }
-      else
+      else if (this->simulation_parameters.linear_solver
+                 .at(PhysicsID::fluid_dynamics)
+                 .mg_smoother_preconditioner_type ==
+               Parameters::LinearSolver::MultigridSmootherPreconditionerType::
+                 AdditiveSchwarzMethod)
         {
           smoother_data[level].preconditioner =
             std::make_shared<PreconditionASM<VectorType>>(
