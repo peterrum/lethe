@@ -68,6 +68,22 @@ public:
             typename GlobalSparseMatrixType,
             typename GlobalSparsityPattern,
             typename Number>
+  PreconditionASM(const DoFHandler<dim>           &dof_handler,
+                  const GlobalSparseMatrixType    &global_sparse_matrix,
+                  const GlobalSparsityPattern     &global_sparsity_pattern,
+                  const AffineConstraints<Number> &constraints)
+    : weighting_type(WeightingType::left)
+  {
+    this->initialize(dof_handler,
+                     global_sparse_matrix,
+                     global_sparsity_pattern,
+                     constraints);
+  }
+
+  template <int dim,
+            typename GlobalSparseMatrixType,
+            typename GlobalSparsityPattern,
+            typename Number>
   void
   initialize(const DoFHandler<dim>           &dof_handler,
              const GlobalSparseMatrixType    &global_sparse_matrix,
@@ -1201,20 +1217,16 @@ MFNavierStokesPreconditionGMG<dim>::initialize(
         }
       else
         {
-          const auto &matrix = this->mg_operators[level]->get_system_matrix();
-          const auto &sparsity_pattern =
-            this->mg_operators[level]->get_sparsity_pattern();
           smoother_data[level].preconditioner =
-            std::make_shared<PreconditionASM<VectorType>>();
-          smoother_data[level].preconditioner->initialize(
-            this->mg_operators[level]
-              ->get_system_matrix_free()
-              .get_dof_handler(),
-            matrix,
-            sparsity_pattern,
-            this->mg_operators[level]
-              ->get_system_matrix_free()
-              .get_affine_constraints());
+            std::make_shared<PreconditionASM<VectorType>>(
+              this->mg_operators[level]
+                ->get_system_matrix_free()
+                .get_dof_handler(),
+              this->mg_operators[level]->get_system_matrix(),
+              this->mg_operators[level]->get_sparsity_pattern(),
+              this->mg_operators[level]
+                ->get_system_matrix_free()
+                .get_affine_constraints());
         }
       smoother_data[level].n_iterations =
         this->simulation_parameters.linear_solver.at(PhysicsID::fluid_dynamics)
