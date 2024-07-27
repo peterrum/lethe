@@ -74,8 +74,6 @@ public:
              const GlobalSparsityPattern     &global_sparsity_pattern,
              const AffineConstraints<Number> &constraints)
   {
-    const unsigned int version = 0;
-
     const auto add_indices = [&](const auto &local_dof_indices) {
       std::vector<types::global_dof_index> local_dof_indices_temp;
 
@@ -83,301 +81,21 @@ public:
         if (!constraints.is_constrained(i))
           local_dof_indices_temp.emplace_back(i);
 
-      local_dof_indices_temp = local_dof_indices;
-
       if (!local_dof_indices_temp.empty())
         patches.push_back(local_dof_indices_temp);
     };
 
-    if (version == 0) // cell-centric
+    for (const auto &cell : dof_handler.active_cell_iterators())
       {
-        for (const auto &cell : dof_handler.active_cell_iterators())
-          {
-            if (cell->is_locally_owned() == false)
-              continue;
+        if (cell->is_locally_owned() == false)
+          continue;
 
-            const auto &fe = cell->get_fe();
+        std::vector<types::global_dof_index> local_dof_indices(
+          cell->get_fe().n_dofs_per_cell());
+        cell->get_dof_indices(local_dof_indices);
 
-            std::vector<types::global_dof_index> local_dof_indices(
-              cell->get_fe().n_dofs_per_cell());
-            cell->get_dof_indices(local_dof_indices);
-
-            std::vector<types::global_dof_index> local_dof_indices_temp;
-
-            for (unsigned int c = 0; c < (dim + 1); ++c)
-              {
-                for (unsigned int i = 0;
-                     i < (local_dof_indices.size() / (dim + 1));
-                     ++i)
-                  {
-                    const auto index =
-                      local_dof_indices[fe.component_to_system_index(c, i)];
-                    local_dof_indices_temp.emplace_back(index);
-                  }
-              }
-
-            add_indices(local_dof_indices_temp);
-          }
+        add_indices(local_dof_indices);
       }
-    else if (version == 1) // Vanka
-      {
-        std::map<types::global_dof_index, std::set<types::global_dof_index>>
-          patches;
-
-
-        for (const auto &cell : dof_handler.active_cell_iterators())
-          {
-            if (cell->is_artificial())
-              continue;
-
-            const auto &fe = cell->get_fe();
-
-            const unsigned int fe_degree = fe.degree;
-
-            std::vector<types::global_dof_index> local_dof_indices(
-              fe.n_dofs_per_cell());
-            cell->get_dof_indices(local_dof_indices);
-
-            const auto lex_to_hiearchical =
-              FETools::lexicographic_to_hierarchic_numbering<dim>(fe_degree);
-
-            const int overlap = 1;
-
-            for (int k = 0; k <= fe_degree; ++k)
-              for (int j = 0; j <= fe_degree; ++j)
-                for (int i = 0; i <= fe_degree; ++i)
-                  {
-                    for (int K = std::max<int>(0, k - overlap);
-                         K <= std::min<int>(k + overlap, fe_degree);
-                         ++K)
-                      for (int J = std::max<int>(0, j - overlap);
-                           J <= std::min<int>(j + overlap, fe_degree);
-                           ++J)
-                        for (int I = std::max<int>(0, i - overlap);
-                             I <= std::min<int>(i + overlap, fe_degree);
-                             ++I)
-                          for (unsigned int d = 0; d < dim; ++d)
-                            {
-                              unsigned int index =
-                                local_dof_indices[fe.component_to_system_index(
-                                  d,
-                                  lex_to_hiearchical[i + j * (fe_degree + 1) +
-                                                     k * (fe_degree + 1) *
-                                                       (fe_degree + 1)])];
-
-                              const auto other_index =
-                                local_dof_indices[fe.component_to_system_index(
-                                  dim,
-                                  lex_to_hiearchical[I + J * (fe_degree + 1) +
-                                                     K * (fe_degree + 1) *
-                                                       (fe_degree + 1)])];
-
-                              if (!dof_handler.locally_owned_dofs().is_element(
-                                    other_index))
-                                continue;
-
-                              patches[other_index].insert(index);
-                            }
-                  }
-          }
-
-        for (const auto &[j, i] : patches)
-          {
-            std::vector<types::global_dof_index> ii;
-            std::copy(i.begin(), i.end(), std::back_inserter(ii));
-
-            ii.push_back(j);
-
-            std::sort(ii.begin(), ii.end());
-
-            add_indices(ii);
-          }
-      }
-    else if (version == 2) // vertices
-      {
-        std::set<std::vector<types::global_dof_index>> patches;
-
-        for (const auto &cell : dof_handler.active_cell_iterators())
-          {
-            if (cell->is_locally_owned() == false)
-              continue;
-
-            const auto &fe = cell->get_fe();
-
-            std::vector<types::global_dof_index> local_dof_indices(
-              fe.n_dofs_per_cell());
-            cell->get_dof_indices(local_dof_indices);
-
-            for (unsigned int i = 0; i < (local_dof_indices.size() / (dim + 1));
-                 ++i)
-              {
-                std::vector<types::global_dof_index> indices;
-
-                for (unsigned int c = 0; c < (dim + 1); ++c)
-                  {
-                    const auto index =
-                      local_dof_indices[fe.component_to_system_index(c, i)];
-
-                    if (dof_handler.locally_owned_dofs().is_element(index))
-                      indices.emplace_back(index);
-                  }
-
-                if (!indices.empty())
-                  {
-                    AssertThrow(indices.size() == (dim + 1),
-                                ExcInternalError());
-                    patches.insert(indices);
-                  }
-              }
-          }
-
-        for (const auto &patch : patches)
-          add_indices(patch);
-      }
-    else if (version == 3) // cell-centric (each component)
-      {
-        std::set<std::vector<types::global_dof_index>> patches;
-
-        for (const auto &cell : dof_handler.active_cell_iterators())
-          {
-            if (cell->is_locally_owned() == false)
-              continue;
-
-            const auto &fe = cell->get_fe();
-
-            std::vector<types::global_dof_index> local_dof_indices(
-              fe.n_dofs_per_cell());
-            cell->get_dof_indices(local_dof_indices);
-
-            for (unsigned int c = 0; c < (dim + 1); ++c)
-              {
-                std::vector<types::global_dof_index> indices;
-
-                for (unsigned int i = 0;
-                     i < (local_dof_indices.size() / (dim + 1));
-                     ++i)
-                  {
-                    const auto index =
-                      local_dof_indices[fe.component_to_system_index(c, i)];
-                    indices.emplace_back(index);
-                  }
-                patches.insert(indices);
-              }
-          }
-
-        for (const auto &patch : patches)
-          add_indices(patch);
-      }
-    else if (version == 4) // digonal + cell-centric (pressure)
-      {
-        std::set<std::vector<types::global_dof_index>> patches;
-
-        for (const auto &cell : dof_handler.active_cell_iterators())
-          {
-            if (cell->is_locally_owned() == false)
-              continue;
-
-            const auto &fe = cell->get_fe();
-
-            std::vector<types::global_dof_index> local_dof_indices(
-              fe.n_dofs_per_cell());
-            cell->get_dof_indices(local_dof_indices);
-
-            for (unsigned int c = 0; c < dim; ++c)
-              {
-                for (unsigned int i = 0;
-                     i < (local_dof_indices.size() / (dim + 1));
-                     ++i)
-                  {
-                    std::vector<types::global_dof_index> indices;
-                    const auto                           index =
-                      local_dof_indices[fe.component_to_system_index(c, i)];
-                    indices.emplace_back(index);
-                    patches.insert(indices);
-                  }
-              }
-
-            for (unsigned int c = dim; c < (dim + 1); ++c)
-              {
-                std::vector<types::global_dof_index> indices;
-
-                for (unsigned int i = 0;
-                     i < (local_dof_indices.size() / (dim + 1));
-                     ++i)
-                  {
-                    const auto index =
-                      local_dof_indices[fe.component_to_system_index(c, i)];
-                    indices.emplace_back(index);
-                  }
-                patches.insert(indices);
-              }
-          }
-
-        std::copy(patches.begin(),
-                  patches.end(),
-                  std::back_inserter(this->patches));
-      }
-    else if (version == 5) // cell-centric (velocity-pressure)
-      {
-        std::set<std::vector<types::global_dof_index>> patches;
-
-        for (const auto &cell : dof_handler.active_cell_iterators())
-          {
-            if (cell->is_locally_owned() == false)
-              continue;
-
-            const auto &fe = cell->get_fe();
-
-            std::vector<types::global_dof_index> local_dof_indices(
-              fe.n_dofs_per_cell());
-            cell->get_dof_indices(local_dof_indices);
-
-            std::vector<types::global_dof_index> indices;
-
-            unsigned int c = 0;
-            for (; c < dim; ++c)
-              {
-                for (unsigned int i = 0;
-                     i < (local_dof_indices.size() / (dim + 1));
-                     ++i)
-                  {
-                    const auto index =
-                      local_dof_indices[fe.component_to_system_index(c, i)];
-                    indices.emplace_back(index);
-                  }
-              }
-            patches.insert(indices);
-
-            indices.clear();
-
-            for (; c < (dim + 1); ++c)
-              {
-                for (unsigned int i = 0;
-                     i < (local_dof_indices.size() / (dim + 1));
-                     ++i)
-                  {
-                    const auto index =
-                      local_dof_indices[fe.component_to_system_index(c, i)];
-                    indices.emplace_back(index);
-                  }
-              }
-            patches.insert(indices);
-          }
-
-        std::copy(patches.begin(),
-                  patches.end(),
-                  std::back_inserter(this->patches));
-      }
-    else
-      {
-        AssertThrow(false, ExcInternalError());
-      }
-
-    const unsigned int n_patches =
-      Utilities::MPI::sum(patches.size(), MPI_COMM_WORLD);
-
-    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-      std::cout << "ASM: " << n_patches << std::endl;
 
     IndexSet ghost_dofs(dof_handler.locally_owned_dofs().size());
     for (const auto &indices : this->patches)
@@ -389,23 +107,6 @@ public:
     src.reinit(partition);
     dst.reinit(partition);
 
-    if (false)
-      {
-        for (const auto &indices : this->patches)
-          {
-            for (const auto &i : indices)
-              dst[i] += 1.0;
-          }
-        dst.compress(VectorOperation::add);
-
-        for (auto &i : dst)
-          i = 1.0 / i;
-
-        std::cout << dst.linfty_norm() << std::endl;
-      }
-
-    auto time = std::chrono::system_clock::now();
-
     std::vector<FullMatrix<Number>> blocks;
 
     SparseMatrixTools::restrict_to_full_matrices(global_sparse_matrix,
@@ -413,123 +114,15 @@ public:
                                                  patches,
                                                  blocks);
 
-    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-      std::cout << "A: "
-                << std::chrono::duration_cast<std::chrono::nanoseconds>(
-                     std::chrono::system_clock::now() - time)
-                       .count() /
-                     1e9
-                << std::endl;
-
-    time = std::chrono::system_clock::now();
     this->blocks.resize(blocks.size());
 
     for (unsigned int b = 0; b < blocks.size(); ++b)
       {
-        if (false)
-          if ((b < 10) &&
-              (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0))
-            {
-              blocks[b].print_formatted(
-                std::cout, 6, false, 0, "0", 1, 1e-12, ",");
-
-              // if(b == 1000)
-              //   exit(0);
-              std::cout << std::endl;
-              std::cout << std::endl;
-              std::cout << std::endl;
-              std::cout << std::endl;
-              std::cout << std::endl;
-              std::cout << std::endl;
-              std::cout << std::endl;
-            }
-
         this->blocks[b] =
           LAPACKFullMatrix<double>(blocks[b].m(), blocks[b].n());
-
         this->blocks[b] = blocks[b];
-
-        if (true)
-          {
-            const unsigned int nc = dim + 1;
-            const unsigned int n  = blocks[b].n() / nc;
-
-            for (unsigned int ic = 0; ic < nc; ++ic)
-              for (unsigned int jc = 0; jc < nc; ++jc)
-                if ((ic == dim) && (jc == dim))
-                  {
-                    // nothing to do
-                  }
-                else if (ic == dim)
-                  {
-                  }
-                else if (jc == dim)
-                  {
-                  }
-                else if (ic == jc)
-                  {
-                  }
-                else
-                  {
-                    for (unsigned int i = 0; i < n; ++i)
-                      for (unsigned int j = 0; j < n; ++j)
-                        this->blocks[b].set(ic * n + i, jc * n + j, 0.0);
-                  }
-          }
-        else
-          {
-            const unsigned int n = blocks[b].n();
-
-            for (int i = 0; i < n; ++i)
-              for (int j = 0; j < n; ++j)
-                if (std::abs(i - j) > 2)
-                  this->blocks[b].set(i, j, 0.0);
-          }
-
-        if (false)
-          {
-            this->blocks[b].compute_eigenvalues();
-
-            std::vector<double> eigenvalues;
-
-            for (unsigned int i = 0; i < this->blocks[b].m(); ++i)
-              eigenvalues.push_back(this->blocks[b].eigenvalue(i).real());
-
-            std::sort(eigenvalues.begin(), eigenvalues.end());
-
-            if (false)
-              {
-                for (const auto i : eigenvalues)
-                  std::cout << i << " ";
-                std::cout << std::endl;
-              }
-
-            unsigned int ev_min = 0;
-
-            // for (;
-            //      (ev_min < eigenvalues.size()) &&
-            //      (std::abs(eigenvalues[ev_min]) < 1e-9);
-            //      ++ev_min)
-            //   {
-            //   }
-
-            printf("%10.2e %10.2e %10.2e \n",
-                   eigenvalues[ev_min],
-                   eigenvalues.back(),
-                   eigenvalues.back() / eigenvalues[ev_min]);
-          }
-
-
         this->blocks[b].compute_lu_factorization();
       }
-
-    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-      std::cout << "B: "
-                << std::chrono::duration_cast<std::chrono::nanoseconds>(
-                     std::chrono::system_clock::now() - time)
-                       .count() /
-                     1e9
-                << std::endl;
   }
 
   void
@@ -600,11 +193,6 @@ public:
     src.zero_out_ghost_values();
     dst.compress(VectorOperation::add);
     dst_.copy_locally_owned_data_from(dst);
-
-    // const double norm = dst_.l2_norm();
-    //
-    // if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-    // std::cout << norm << std::endl;
   }
 
 private:
