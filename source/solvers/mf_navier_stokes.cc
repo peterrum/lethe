@@ -45,8 +45,36 @@
 
 #include <deal.II/numerics/vector_tools.h>
 
+
+
 template <typename VectorType>
-class PreconditionASM
+class PreconditionBase
+{
+public:
+  virtual void
+  vmult(VectorType &dst, const VectorType &src) const = 0;
+};
+
+template <typename VectorType>
+class MyDiagonalMatrix : public PreconditionBase<VectorType>
+{
+public:
+  MyDiagonalMatrix(const VectorType &diagonal)
+    : diagonal_matrix(diagonal)
+  {}
+
+  void
+  vmult(VectorType &dst, const VectorType &src) const override
+  {
+    diagonal_matrix.vmult(dst, src);
+  }
+
+private:
+  DiagonalMatrix<VectorType> diagonal_matrix;
+};
+
+template <typename VectorType>
+class PreconditionASM : public PreconditionBase<VectorType>
 {
 private:
   enum class WeightingType
@@ -142,7 +170,7 @@ public:
   }
 
   void
-  vmult(VectorType &dst_, const VectorType &src_) const
+  vmult(VectorType &dst_, const VectorType &src_) const override
   {
     dst = 0.0;
     src.copy_locally_owned_data_from(src_);
@@ -1208,12 +1236,11 @@ MFNavierStokesPreconditionGMG<dim>::initialize(
   for (unsigned int level = this->minlevel; level <= this->maxlevel; ++level)
     {
       VectorType diagonal_vector;
-      if constexpr (std::is_same_v<SmootherPreconditionerType,
-                                   DiagonalMatrix<VectorType>>)
+      if (false)
         {
           this->mg_operators[level]->compute_inverse_diagonal(diagonal_vector);
           smoother_data[level].preconditioner =
-            std::make_shared<SmootherPreconditionerType>(diagonal_vector);
+            std::make_shared<MyDiagonalMatrix<VectorType>>(diagonal_vector);
         }
       else
         {
