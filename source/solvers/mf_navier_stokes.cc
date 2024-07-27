@@ -2826,14 +2826,6 @@ MFNavierStokesSolver<dim>::solve_system_GMRES(const bool   initial_step,
 
   SolverGMRES<VectorType> solver(solver_control, solver_parameters);
 
-  if (false)
-    solver.connect(
-      [&](const auto i, const auto v, const auto &) -> SolverControl::State {
-        this->pcout << "GMRES residual: " << i << ": " << v << std::endl;
-
-        return SolverControl::State::success;
-      });
-
   this->newton_update = 0.0;
 
   this->computing_timer.enter_subsection("Solve linear system");

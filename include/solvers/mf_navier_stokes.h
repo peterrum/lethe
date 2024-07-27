@@ -210,19 +210,19 @@ private:
   /// Multigrid wrapper for the coarse grid solver
   std::shared_ptr<MGCoarseGridBase<VectorType>> mg_coarse;
 
-  /// Solver control for the coarse grid solver (TODO)
+  /// Solver control for the coarse grid solver (intermediate level)
   std::shared_ptr<SolverControl> coarse_grid_solver_control_intermediate;
 
-  /// Multigrid wrapper for the coarse grid solver (TODO)
+  /// Multigrid wrapper for the coarse grid solver (intermediate level)
   std::shared_ptr<MGCoarseGridBase<VectorType>> mg_coarse_intermediate;
 
-  /// GMRES as coarse grid solver (TODO)
+  /// GMRES as coarse grid solver (intermediate level)
   std::shared_ptr<SolverGMRES<VectorType>> coarse_grid_solver_intermediate;
 
-  /// Multigrid method (TODO)
+  /// Multigrid method (intermediate level)
   std::shared_ptr<Multigrid<VectorType>> mg_intermediate;
 
-  /// Global coarsening multigrid preconiditoner object (TODO)
+  /// Global coarsening multigrid preconiditoner object (intermediate level)
   std::shared_ptr<PreconditionMG<dim, VectorType, GCTransferType>>
     gc_multigrid_preconditioner_intermediate;
 
