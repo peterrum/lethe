@@ -148,7 +148,7 @@ private:
   /// Max level of the multigrid hierarchy
   unsigned int maxlevel;
 
-  /// Min level of the multigrid hierarchy (TODO)
+  /// Intermediate level of the multigrid hierarchy
   unsigned int intlevel;
 
   /// Triangulations for the global coarsening case

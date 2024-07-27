@@ -646,7 +646,7 @@ NavierStokesOperatorBase<dim, number>::
   stabilization_parameter_lsic.reinit(n_cells, integrator.n_q_points);
 
   // Define 1/dt if the simulation is transient
-  double sdt = 0;
+  double sdt = 0.0;
 
   bool transient =
     (is_bdf(this->simulation_control->get_assembly_method())) ? true : false;
@@ -946,7 +946,7 @@ NavierStokesStabilizedOperator<dim, number>::do_cell_integral_local(
             gradient_result[dim][i] += tau * (*bdf_coefs)[0] * value[i];
         }
       // (∇δp)τ·∇q
-      gradient_result[dim] += 1.0 * tau * gradient[dim];
+      gradient_result[dim] += tau * gradient[dim];
 
       // SUPG Jacobian
       for (unsigned int i = 0; i < dim; ++i)
@@ -1178,7 +1178,7 @@ NavierStokesStabilizedOperator<dim, number>::local_evaluate_residual(
                                                   previous_time_derivatives[i]);
             }
           // +(∇p)τ∇·q
-          gradient_result[dim] += 1.0 * tau * gradient[dim];
+          gradient_result[dim] += tau * gradient[dim];
 
           // SUPG term
           for (unsigned int i = 0; i < dim; ++i)

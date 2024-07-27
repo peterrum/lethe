@@ -215,6 +215,12 @@ public:
   void
   vmult_interface_up(VectorType &dst, VectorType const &src) const;
 
+  /**
+   * @brief Return sparsity pattern used to set up the sparse matrix by
+   * get_system_matrix().
+   *
+   * @return Sparsity pattern.
+   */
   const DynamicSparsityPattern &
   get_sparsity_pattern() const;
 
@@ -376,7 +382,8 @@ protected:
   AffineConstraints<number> constraints;
 
   /**
-   * TODO
+   * @brief Sparsity pattern used when the matrix of certain level is computed
+   * and stored.
    */
   mutable DynamicSparsityPattern dsp;
 
