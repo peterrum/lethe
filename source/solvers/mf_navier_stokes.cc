@@ -449,15 +449,42 @@ public:
 
         this->blocks[b] = blocks[b];
 
-        const unsigned int nc = dim + 1;
-        const unsigned int n  = blocks[b].n() / nc;
+        if (true)
+          {
+            const unsigned int nc = dim + 1;
+            const unsigned int n  = blocks[b].n() / nc;
 
-        for (unsigned int ic = 0; ic < nc; ++ic)
-          for (unsigned int jc = 0; jc < nc; ++jc)
-            if (!((ic == jc) || (ic == dim) || (jc == dim)))
-              for (unsigned int i = 0; i < n; ++i)
-                for (unsigned int j = 0; j < n; ++j)
-                  this->blocks[b].set(ic * n + i, jc * n + j, 0.0);
+            for (unsigned int ic = 0; ic < nc; ++ic)
+              for (unsigned int jc = 0; jc < nc; ++jc)
+                if ((ic == dim) && (jc == dim))
+                  {
+                    // nothing to do
+                  }
+                else if (ic == dim)
+                  {
+                  }
+                else if (jc == dim)
+                  {
+                  }
+                else if (ic == jc)
+                  {
+                  }
+                else
+                  {
+                    for (unsigned int i = 0; i < n; ++i)
+                      for (unsigned int j = 0; j < n; ++j)
+                        this->blocks[b].set(ic * n + i, jc * n + j, 0.0);
+                  }
+          }
+        else
+          {
+            const unsigned int n = blocks[b].n();
+
+            for (int i = 0; i < n; ++i)
+              for (int j = 0; j < n; ++j)
+                if (std::abs(i - j) > 2)
+                  this->blocks[b].set(i, j, 0.0);
+          }
 
         if (false)
           {
